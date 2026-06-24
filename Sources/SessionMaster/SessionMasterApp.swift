@@ -41,7 +41,11 @@ struct MenuBarLabel: View {
     @State private var settings = AppSettings.shared
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: settings.menuBarIcon)
+            if settings.menuBarIcon == MenuBarIcons.ringsID {
+                Image(nsImage: MenuBarIcons.rings)
+            } else {
+                Image(systemName: settings.menuBarIcon)
+            }
             if store.needsApprovalCount > 0 {
                 Text("\(store.needsApprovalCount)").foregroundStyle(.red)        // needs approval
             } else if store.awaitingYouCount > 0 {

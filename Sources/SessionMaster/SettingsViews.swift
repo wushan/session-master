@@ -13,7 +13,12 @@ struct ConfigView: View {
         Form {
             Section("Menu-bar icon") {
                 Picker("Icon", selection: $settings.menuBarIcon) {
-                    ForEach(AppSettings.menuBarIcons, id: \.self) { Image(systemName: $0).tag($0) }
+                    ForEach(AppSettings.menuBarIcons, id: \.self) { id in
+                        Group {
+                            if id == MenuBarIcons.ringsID { Image(nsImage: MenuBarIcons.rings) }
+                            else { Image(systemName: id) }
+                        }.tag(id)
+                    }
                 }.pickerStyle(.segmented).labelsHidden()
             }
             Section("Editor") {

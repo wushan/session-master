@@ -24,10 +24,11 @@ final class AppSettings {
         }
     }
 
-    /// SF Symbols offered for the menu-bar icon.
+    /// Menu-bar icon options. "rings" is the custom three-circle glyph (matches the app icon);
+    /// the rest are SF Symbols.
     static let menuBarIcons = [
-        "bubble.left.and.bubble.right.fill", "square.stack.3d.up.fill", "rectangle.3.group.fill",
-        "point.3.filled.connected.trianglepath.dotted", "command", "waveform.path.ecg",
+        MenuBarIcons.ringsID, "bubble.left.and.bubble.right.fill", "square.stack.3d.up.fill",
+        "rectangle.3.group.fill", "point.3.filled.connected.trianglepath.dotted", "waveform.path.ecg",
     ]
     var menuBarIcon: String { didSet { d.set(menuBarIcon, forKey: "menuBarIcon") } }
 
