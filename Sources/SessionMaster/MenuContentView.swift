@@ -3,6 +3,7 @@ import SessionCore
 
 struct MenuContentView: View {
     @Bindable var store: SessionStore
+    @Bindable var floating: FloatingPanel
     @Environment(\.openWindow) private var openWindow
     @State private var collapsed: Set<String> = []
 
@@ -59,6 +60,12 @@ struct MenuContentView: View {
                     .font(.caption).foregroundStyle(.yellow).help("Your turn")
             }
             Text("\(popoverSessions.count)").font(.caption).foregroundStyle(.secondary)
+            Button { floating.toggle() } label: {
+                Image(systemName: floating.isShown ? "pin.fill" : "pin")
+                    .foregroundStyle(floating.isShown ? .blue : .secondary)
+            }
+            .buttonStyle(.borderless).pointerCursor()
+            .help(floating.isShown ? "Unpin floating window" : "Pin as floating window")
         }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 
