@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SessionCore
 
 struct SessionRowView: View {
@@ -89,7 +90,13 @@ struct SessionRowView: View {
             let state = session.rich.prState
             let color: Color = state == "MERGED" ? .purple : (state == "CLOSED" ? .red
                 : (state == "DRAFT" ? .secondary : .green))
-            chip("PR#\(n)" + (state == "DRAFT" ? " draft" : ""), color)
+            Button {
+                if let s = session.rich.prURL, let url = URL(string: s) { NSWorkspace.shared.open(url) }
+            } label: {
+                chip("PR#\(n)" + (state == "DRAFT" ? " draft" : ""), color)
+            }
+            .buttonStyle(.plain).pointerCursor()
+            .help(session.rich.prURL ?? "Open pull request")
         }
     }
 
@@ -136,12 +143,11 @@ struct SessionRowView: View {
         return prettyPath(session.cwd)
     }
 
+    // Recall is the whole-row click, so the row only needs the secondary actions here.
     private var actions: some View {
         HStack(spacing: 2) {
-            IconButton(systemName: "arrow.uturn.backward.circle", help: "Recall this session's window",
-                       disabled: !session.canRecall, action: onRecall)
             IconButton(systemName: "chevron.left.forwardslash.chevron.right",
-                       help: "Open worktree in VS Code", action: onVSCode)
+                       help: "Open worktree in editor", action: onVSCode)
             if let onReveal {
                 IconButton(systemName: "folder", help: "Reveal worktree in Finder", action: onReveal)
             }
