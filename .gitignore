@@ -1,0 +1,18 @@
+# Swift / SwiftPM build artifacts
+.build/
+.swiftpm/
+build/
+
+# Packaged app output
+*.app
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+
+# Session-local / scratch
+.claude/
+*.log
