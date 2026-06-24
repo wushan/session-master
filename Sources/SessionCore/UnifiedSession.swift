@@ -87,7 +87,10 @@ public struct UnifiedSession: Identifiable, Sendable {
         switch status {
         case .waiting: return .needsApproval
         case .busy:    return .working
-        case .idle:    return (source == .claudeCLI || source == .claudeDesktop) ? .awaitingYou : .idle
+        case .idle:
+            // A live interactive Claude session sitting at the prompt = "your turn".
+            // A saved Desktop session (no running process, pid == nil) is just idle.
+            return (source.isClaude && pid != nil) ? .awaitingYou : .idle
         case .shell:   return .idle      // dropped to a shell inside the session
         case .unknown: return .unknown
         }
@@ -111,6 +114,8 @@ public enum SessionAggregator {
     /// Top-level sessions plus a map of parent id → sub-agent children (Codex sub-agents).
     public static func snapshot() -> (sessions: [UnifiedSession], subagents: [String: [UnifiedSession]]) {
         let claude = claudeSessions()
+        let liveIds = Set(claude.map(\.id))
+        let desktop = desktopStandalone(excluding: liveIds)
         let codexRaw = filterCodex(CodexSessionCollector.recent())
         let codex = codexRaw.map(unified(from:))
         var subagents: [String: [UnifiedSession]] = [:]
@@ -118,7 +123,20 @@ public enum SessionAggregator {
             let subs = CodexSubagentScanner.scan(rollout: c.url)
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
         }
-        return ((claude + codex).sorted(by: order), subagents)
+        return ((claude + codex + desktop).sorted(by: order), subagents)
+    }
+
+    /// Saved Claude Desktop sessions that aren't currently live (those show as live instead).
+    static func desktopStandalone(excluding liveIds: Set<String>) -> [UnifiedSession] {
+        ClaudeDesktopCollector.sessions().compactMap { d in
+            guard let cli = d.cliSessionId, !liveIds.contains(cli) else { return nil }
+            guard let cwd = d.cwd ?? d.worktreePath, !cwd.isEmpty else { return nil }
+            return UnifiedSession(
+                id: cli, source: .claudeDesktop, pid: nil, cwd: cwd, name: nil, title: d.title,
+                model: d.model, effort: d.effort, branch: d.branch, worktreeName: d.worktreeName,
+                originator: nil, status: .idle, waitingFor: nil, terminal: .dead,
+                updatedAt: d.lastActivityAt)
+        }
     }
 
     /// Convenience: the full parent→child tree (companions + sub-agents).

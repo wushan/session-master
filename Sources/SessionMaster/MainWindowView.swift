@@ -11,6 +11,8 @@ struct MainWindowView: View {
     @State private var sourceFilter: SourceFilter = .all
     @State private var search = ""
     @State private var collapsed: Set<String> = []
+    @State private var expandedProjects: Set<String> = []
+    private let perProjectLimit = 5
 
     var body: some View {
         VStack(spacing: 0) {
@@ -71,7 +73,12 @@ struct MainWindowView: View {
     private var grouped: [(project: String, nodes: [SessionNode])] {
         Dictionary(grouping: SessionTree.build(filteredSessions, extraChildren: store.subagentChildren),
                    by: \.session.projectName)
-            .map { (project: $0.key, nodes: $0.value.sorted { $0.session.attention.rank < $1.session.attention.rank }) }
+            // Within a project: needs-you first, then most-recent first.
+            .map { (project: $0.key, nodes: $0.value.sorted {
+                $0.session.attention.rank != $1.session.attention.rank
+                    ? $0.session.attention.rank < $1.session.attention.rank
+                    : ($0.session.updatedAt ?? .distantPast) > ($1.session.updatedAt ?? .distantPast)
+            }) }
             .sorted { $0.project.localizedCaseInsensitiveCompare($1.project) == .orderedAscending }
     }
 
@@ -81,10 +88,24 @@ struct MainWindowView: View {
         } else {
             List {
                 ForEach(grouped, id: \.project) { group in
+                    let expanded = expandedProjects.contains(group.project)
+                    let shown = expanded ? group.nodes : Array(group.nodes.prefix(perProjectLimit))
                     Section {
-                        ForEach(group.nodes) { node in
+                        ForEach(shown) { node in
                             SessionNodeView(node: node, collapsed: $collapsed, store: store)
                                 .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+                        }
+                        if group.nodes.count > perProjectLimit {
+                            Button {
+                                if expanded { expandedProjects.remove(group.project) }
+                                else { expandedProjects.insert(group.project) }
+                            } label: {
+                                Text(expanded ? "Show less"
+                                     : "Show \(group.nodes.count - perProjectLimit) more…")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain).pointerCursor()
+                            .listRowInsets(EdgeInsets(top: 2, leading: 30, bottom: 4, trailing: 6))
                         }
                     } header: {
                         HStack(spacing: 6) {

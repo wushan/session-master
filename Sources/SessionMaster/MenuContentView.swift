@@ -6,24 +6,35 @@ struct MenuContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var collapsed: Set<String> = []
 
+    /// The popover is a quick menu: show live sessions + recently-active ones, not the full
+    /// archive of saved Desktop sessions (those live in the dashboard, grouped per project).
+    private var popoverSessions: [UnifiedSession] {
+        store.sessions.filter { s in
+            if s.pid != nil { return true }
+            guard let u = s.updatedAt else { return false }
+            return Date().timeIntervalSince(u) < 3 * 3600
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if store.sessions.isEmpty {
-                Text("No live sessions").foregroundStyle(.secondary)
+            let sessions = popoverSessions
+            if sessions.isEmpty {
+                Text("No active sessions").foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 24)
             } else {
                 ScrollView {
                     VStack(spacing: 4) {
-                        ForEach(SessionTree.build(store.sessions, extraChildren: store.subagentChildren)) { node in
+                        ForEach(SessionTree.build(sessions, extraChildren: store.subagentChildren)) { node in
                             SessionNodeView(node: node, collapsed: $collapsed, store: store)
                         }
                     }.padding(8)
                 }
                 // ScrollView has no intrinsic height inside a self-sizing menu-bar
                 // window, so it collapses to 0. Give it a concrete, content-aware height.
-                .frame(height: min(CGFloat(store.sessions.count) * 66 + 16, 460))
+                .frame(height: min(CGFloat(sessions.count) * 66 + 16, 460))
             }
             if !store.jobs.isEmpty {
                 Divider()
@@ -47,7 +58,7 @@ struct MenuContentView: View {
                 Label("\(store.awaitingYouCount)", systemImage: "person.fill.questionmark")
                     .font(.caption).foregroundStyle(.yellow).help("Your turn")
             }
-            Text("\(store.sessions.count)").font(.caption).foregroundStyle(.secondary)
+            Text("\(popoverSessions.count)").font(.caption).foregroundStyle(.secondary)
         }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 

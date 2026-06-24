@@ -4,6 +4,8 @@ import Foundation
 /// `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json`.
 public struct DesktopSessionInfo: Sendable {
     public let cliSessionId: String?
+    public let cwd: String?
+    public let worktreePath: String?
     public let model: String?
     public let effort: String?
     public let title: String?
@@ -38,12 +40,28 @@ public enum ClaudeDesktopCollector {
         return out
     }
 
+    /// All non-archived Desktop sessions (for standalone display, not just enrichment).
+    public static func sessions() -> [DesktopSessionInfo] {
+        let fm = FileManager.default
+        guard let en = fm.enumerator(at: dir,
+                includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]) else { return [] }
+        var out: [DesktopSessionInfo] = []
+        for case let url as URL in en where url.lastPathComponent.hasPrefix("local_")
+            && url.pathExtension == "json" {
+            if let info = cache.value(path: url.path, stamp: fileStamp(url), compute: { parse(url) }),
+               !info.isArchived { out.append(info) }
+        }
+        return out
+    }
+
     static func parse(_ url: URL) -> DesktopSessionInfo? {
         guard let data = try? Data(contentsOf: url),
               let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let cli = d["cliSessionId"] as? String else { return nil }
         return DesktopSessionInfo(
             cliSessionId: cli,
+            cwd: d["cwd"] as? String,
+            worktreePath: d["worktreePath"] as? String,
             model: d["model"] as? String,
             effort: d["effort"] as? String,
             title: d["title"] as? String,
