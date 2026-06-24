@@ -52,22 +52,43 @@ The menu-bar icon shows the count of sessions that need you.
 
 ## Install
 
-Requirements: **macOS 14+** and a **Swift 5.9+ / Xcode 15+** toolchain.
+Requires **macOS 14+**.
 
-```bash
-git clone https://github.com/wushan/session-master.git
-cd session-master
-scripts/install.sh          # builds release, signs, installs to /Applications
-open /Applications/SessionMaster.app
+### Homebrew (easiest)
+
+```sh
+brew install --cask wushan/tap/session-master
 ```
 
-`install.sh` creates a small **self-signed code-signing identity** in a dedicated keychain
-the first time (`scripts/make-dev-cert.sh`). This gives the app a stable signature so the
-macOS **Accessibility** grant persists across rebuilds — it is local-only and not sensitive.
+### Download the .dmg
 
-On first launch, click the ▦ menu-bar icon → **Dashboard**, and grant **Accessibility** when
-prompted (System Settings ▸ Privacy & Security ▸ Accessibility). Recall needs it to focus and
-move terminal windows. The in-app banner links you straight there.
+Grab the latest `.dmg` from [Releases](https://github.com/wushan/session-master/releases) and
+drag **SessionMaster** to Applications. The app is **self-signed (not notarized)**, so clear
+the download quarantine once (the Homebrew cask does this for you):
+
+```sh
+xattr -dr com.apple.quarantine /Applications/SessionMaster.app
+```
+
+### From source
+
+Requires a **Swift 5.9+ / Xcode 15+** toolchain.
+
+```sh
+git clone https://github.com/wushan/session-master.git
+cd session-master
+scripts/install.sh    # build release, sign, install to /Applications
+```
+
+`scripts/install.sh` creates a small self-signed identity in a dedicated keychain
+(`scripts/make-dev-cert.sh`) so the Accessibility grant persists across rebuilds — local-only,
+not sensitive.
+
+### First launch
+
+Click the ▦ menu-bar icon → **Dashboard**, and grant **Accessibility** when prompted
+(System Settings ▸ Privacy & Security ▸ Accessibility). Recall needs it to focus and move
+terminal windows — the in-app banner links you straight there.
 
 ### Develop
 
