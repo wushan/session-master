@@ -29,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)   // menu-bar only, no Dock icon
         store.start()
+        if CommandLine.arguments.contains("--pinned") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.floating.show() }
+        }
     }
 }
 

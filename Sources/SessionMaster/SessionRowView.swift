@@ -51,20 +51,23 @@ struct SessionRowView: View {
         .help(session.canRecall ? "Click to recall" : "")
     }
 
-    /// A vertical timeline rail: the status dot sits at the top, a connector line runs down
-    /// through the row, so the list reads as a continuous timeline. Children keep a plain dot.
+    /// A vertical timeline rail with the last-activity time on the left as the time axis: the
+    /// status dot sits at the top (pulsing when working), a connector line runs down the row.
     @ViewBuilder private var timelineLeading: some View {
         if isChild {
             Circle().fill(session.attention.color).frame(width: 7, height: 7)
                 .padding(.top, 4).help(session.attention.label)
         } else {
-            VStack(spacing: 0) {
-                Circle().fill(session.attention.color).frame(width: 9, height: 9)
-                    .padding(.top, 3).help(session.attention.label)
-                Rectangle().fill(.quaternary).frame(width: 1.5)
-                    .frame(maxHeight: .infinity).padding(.top, 2)
+            HStack(alignment: .top, spacing: 5) {
+                Text(relativeAge ?? "").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .frame(width: 30, alignment: .trailing).padding(.top, 1)
+                VStack(spacing: 0) {
+                    TimelineDot(color: session.attention.color, pulsing: session.attention == .working)
+                        .padding(.top, 2).help(session.attention.label)
+                    Rectangle().fill(.quaternary).frame(width: 1.5)
+                        .frame(maxHeight: .infinity).padding(.top, 2)
+                }.frame(width: 10)
             }
-            .frame(width: 10)
         }
     }
 
@@ -127,7 +130,6 @@ struct SessionRowView: View {
             Text("·").foregroundStyle(.quaternary)
             Text(session.terminal.terminalApp ?? originatorText)
             if session.terminal.viaTmux { Text("· tmux") }
-            if let age = relativeAge { Text("· \(age)").foregroundStyle(.tertiary) }
         }.font(.caption2).foregroundStyle(.secondary).lineLimit(1)
     }
 
