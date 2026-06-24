@@ -34,7 +34,7 @@ struct MenuContentView: View {
                 }
                 // ScrollView has no intrinsic height inside a self-sizing menu-bar
                 // window, so it collapses to 0. Give it a concrete, content-aware height.
-                .frame(height: min(CGFloat(sessions.count) * 66 + 16, 460))
+                .frame(height: min(CGFloat(sessions.count) * 84 + 16, 520))
             }
             if !store.jobs.isEmpty {
                 Divider()

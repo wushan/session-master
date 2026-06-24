@@ -21,13 +21,16 @@ struct SessionRowView: View {
                             .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
                         sourceBadge
                         if session.isAutomationRun { autoBadge }
+                        prChip
                     }
                     metaLine
-                    if !isChild || session.branch != nil {
-                        HStack(spacing: 6) {
-                            if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
-                            Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                        }
+                    HStack(spacing: 6) {
+                        if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
+                        Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                        gitChips
+                    }
+                    if let sub = session.subtitle, !sub.isEmpty {
+                        Text(sub).font(.caption2).foregroundStyle(.secondary).lineLimit(1).italic()
                     }
                     if session.attention == .needsApproval, let w = session.waitingFor {
                         Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
@@ -59,6 +62,35 @@ struct SessionRowView: View {
             .background(session.source.isCodex ? Color.purple.opacity(0.22) : Color.orange.opacity(0.22))
             .foregroundStyle(session.source.isCodex ? .purple : .orange)
             .clipShape(Capsule())
+    }
+
+    private func chip(_ text: String, _ color: Color) -> some View {
+        Text(text).font(.system(size: 9, weight: .semibold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(color.opacity(0.18)).foregroundStyle(color).clipShape(Capsule())
+    }
+
+    @ViewBuilder private var gitChips: some View {
+        if let g = session.rich.git {
+            switch g.track {
+            case .gone:               chip("merged", .blue)
+            case .ahead(let n):       chip("↑\(n)", .orange)
+            case .behind(let n):      chip("↓\(n)", .red)
+            case .diverged(let a, let b): chip("↑\(a) ↓\(b)", .red)
+            case .noUpstream:         chip("local", .secondary)
+            case .inSync, .unknown:   EmptyView()
+            }
+            if g.dirtyCount > 0 { chip("\(g.dirtyCount)Δ", .yellow) }
+        }
+    }
+
+    @ViewBuilder private var prChip: some View {
+        if let n = session.rich.prNumber {
+            let state = session.rich.prState
+            let color: Color = state == "MERGED" ? .purple : (state == "CLOSED" ? .red
+                : (state == "DRAFT" ? .secondary : .green))
+            chip("PR#\(n)" + (state == "DRAFT" ? " draft" : ""), color)
+        }
     }
 
     private var autoBadge: some View {

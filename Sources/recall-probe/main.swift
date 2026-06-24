@@ -88,7 +88,10 @@ case "tree":
     for node in SessionAggregator.tree() {
         let s = node.session
         let wt = GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
-        print("• [\(s.source.rawValue)] \(s.displayTitle)  (\(s.attention.rawValue))")
+        let git = s.rich.git.map { "[\($0.trackLabel ?? "sync") \($0.dirtyCount > 0 ? "·\($0.dirtyCount)Δ" : "")]" } ?? ""
+        let pr = s.rich.prNumber.map { " PR#\($0)" } ?? ""
+        print("• [\(s.source.rawValue)] \(s.displayTitle)  (\(s.attention.rawValue)) \(git)\(pr)")
+        if let sub = s.subtitle { print("    ↳ \(sub.prefix(70))") }
         print("    open→ \(wt)")
         for c in node.children {
             print("    └─ [\(c.source.rawValue)] \(c.displayTitle)  open→ \(c.cwd)")

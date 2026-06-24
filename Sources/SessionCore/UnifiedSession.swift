@@ -56,6 +56,9 @@ public struct UnifiedSession: Identifiable, Sendable {
     public let updatedAt: Date?
     public let isAutomationRun: Bool     // a Codex automation execution (vs a manual session)
 
+    /// Optional enrichment (git state, PR, last prompt, context%) — filled by the aggregator.
+    public var rich = SessionRich()
+
     public init(id: String, source: Source, pid: pid_t?, cwd: String, name: String?, title: String?,
                 model: String?, effort: String?, branch: String?, worktreeName: String?,
                 originator: String?, status: Status, waitingFor: String?,
@@ -80,6 +83,8 @@ public struct UnifiedSession: Identifiable, Sendable {
         worktreeName != nil || cwd.contains("/.claude/worktrees/") || cwd.contains("/.codex/worktrees/")
     }
     public var displayTitle: String { name ?? title ?? projectName }
+    /// One-line "what is this session doing" — the last user ask or the AI-generated title.
+    public var subtitle: String? { rich.lastPrompt ?? rich.aiTitle }
 
     /// Derived attention state. For interactive Claude sessions, `idle` is "your turn";
     /// for Codex background/automation rollouts, `idle` is just "not recently active".
@@ -123,7 +128,14 @@ public enum SessionAggregator {
             let subs = CodexSubagentScanner.scan(rollout: c.url)
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
         }
-        return ((claude + codex + desktop).sorted(by: order), subagents)
+
+        var sessions = claude + codex + desktop
+        for i in sessions.indices {
+            let s = sessions[i]
+            let dir = GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
+            sessions[i].rich.git = GitStatusCollector.status(dir: dir)
+        }
+        return (sessions.sorted(by: order), subagents)
     }
 
     /// Saved Claude Desktop sessions that aren't currently live (those show as live instead).
@@ -161,12 +173,9 @@ public enum SessionAggregator {
                 model = d.model; effort = d.effort; title = d.title
                 branch = d.branch; worktree = d.worktreeName
             }
-            if model == nil || branch == nil {          // fall back to CLI transcript
-                if let h = ClaudeHistoryEnricher.enrich(sessionId: s.sessionId, cwd: s.cwd) {
-                    model = model ?? h.model; branch = branch ?? h.branch
-                }
-            }
-            return UnifiedSession(
+            let h = ClaudeHistoryEnricher.enrich(sessionId: s.sessionId, cwd: s.cwd)
+            model = model ?? h?.model; branch = branch ?? h?.branch
+            var u = UnifiedSession(
                 id: s.sessionId,
                 source: isCLI ? .claudeCLI : .claudeDesktop,
                 pid: s.pid, cwd: s.cwd, name: s.name, title: title,
@@ -174,6 +183,9 @@ public enum SessionAggregator {
                 originator: nil,
                 status: UnifiedSession.Status(rawValue: s.status) ?? .unknown,
                 waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt)
+            u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
+            u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
+            return u
         }
     }
 
