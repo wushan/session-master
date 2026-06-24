@@ -24,15 +24,25 @@ puts it in one place, with one-click recall.
 ## Features
 
 - **Unified, real-time list** of Claude Code (CLI + Desktop) and Codex (CLI + Desktop + VS
-  Code) sessions, grouped by project.
-- **Status that tells you what each session needs** — your turn, needs approval, working, idle.
+  Code) sessions — both *live* and your *saved* Desktop conversations, grouped by project
+  (recent first, the rest one click away).
+- **Status that tells you what each session needs** — your turn, needs approval, working, idle
+  — with **sound + Notification Center alerts** when a session finishes its turn or hits a
+  permission prompt.
+- **Rich at-a-glance status on each row**: git branch state (merged / ↑unpushed / ↓behind /
+  local), uncommitted change count, **clickable PR badge** (open / draft / merged), context-
+  window %, and the session's last prompt.
 - **Parent → child hierarchy**: a Claude session and the Codex companion / sub-agents it
   spawned are nested under it (collapsible).
-- **One-click Recall**: raises the exact terminal window that owns a session — and on a
-  multi-monitor setup, pulls it onto the display you're looking at.
-- **Open in VS Code / Reveal in Finder** — pointed at the session's *real worktree*, not the
-  repo root.
+- **One-click Recall** (click the row): raises the exact terminal window that owns a session —
+  and on multi-monitor, pulls it onto the display you're looking at. Codex Desktop sessions
+  recall via the `codex://threads/<id>` deep link straight to the conversation.
+- **Open in your editor / Reveal in Finder** — pointed at the session's *real worktree*, not
+  the repo root. Editor is configurable (VS Code / Cursor / Zed / Sublime / Xcode / custom).
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.
+- **Dashboard** with Project / Recent sort, source filter, and search; **Config** and **About**
+  (version + one-click *Update via Homebrew*) tabs.
+- **Pin to a floating window** that stays on top and doesn't dismiss when you click away.
 - **Launch at login**, menu-bar only (no Dock clutter).
 
 <p align="center">
@@ -105,16 +115,20 @@ swift run recall-probe jobs    # automations + routines with next run
 
 ## How it works
 
-Everything is read **locally and read-only** — no network, no telemetry.
+Session data is read **locally and read-only**, no telemetry. Everything is `mtime`-cached so
+the 2-second poll stays cheap. The only network call is the optional **PR status**, which uses
+your `gh` CLI to query GitHub (cached ~5 min, fetched in the background) — it degrades to just
+the PR number (which the transcript already contains) when offline.
 
 | Source | Path |
 |---|---|
 | Claude CLI live status | `~/.claude/sessions/<pid>.json` |
-| Claude CLI history (model/branch) | `~/.claude/projects/<encoded-cwd>/<id>.jsonl` |
+| Claude CLI history (model/branch/PR/last-prompt/tokens) | `~/.claude/projects/<encoded-cwd>/<id>.jsonl` |
 | Claude Desktop sessions | `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json` |
 | Claude routines | `~/.claude/scheduled-tasks/*/SKILL.md` |
 | Codex sessions (CLI/Desktop/VS Code) | `~/.codex/sessions/YYYY/MM/DD/*.jsonl` |
 | Codex automations | `~/.codex/automations/*/automation.toml` |
+| Git state / PR | `git` on the session's worktree, `gh pr list` per repo |
 
 A session is matched to its terminal window by walking the process parent chain
 (`sysctl(KERN_PROC_ALL)` → owning terminal app) — process **names are not used**, because the
@@ -125,16 +139,17 @@ Claude session name against the terminal's window title via the **Accessibility 
 
 ```
 SessionCore (library)                 SessionMaster (menu-bar app)
-  Collectors  ClaudeLiveCollector       SessionStore     @Observable, 2s poll, off-main
-              ClaudeHistoryEnricher      MenuContentView  menu-bar popover
-              ClaudeDesktopCollector     MainWindowView   dashboard (tabs/filter/search)
-              CodexSessionCollector      SessionNodeView  hierarchy + collapse
-              CodexSubagentScanner       AccessibilityBanner / LoginItem
-              CodexAutomationCollector
-              ClaudeRoutinesCollector
-              ProcessCollector           terminal correlation
-  Model       UnifiedSession / SessionTree / ScheduledJob
-  Actions     Recaller (AX recall + multi-display move) / VSCodeOpener / GitWorktree
+  Collectors  ClaudeLiveCollector       SessionStore      @Observable, 2s poll, off-main
+              ClaudeHistoryEnricher      MenuContentView   menu-bar popover (+ pin)
+              ClaudeDesktopCollector     MainWindowView    dashboard (Sessions/Automations/Config/About)
+              CodexSessionCollector      SessionNodeView   hierarchy + collapse
+              CodexSubagentScanner       FloatingPanel     pinned always-on-top window
+              CodexAutomationCollector   Notifier          sound + Notification Center
+              ClaudeRoutinesCollector    AppSettings        editor / sound / launch-at-login
+              ProcessCollector           AccessibilityBanner / LoginItem / Updater
+  Enrich      GitStatus / PRStatus / GitWorktree
+  Model       UnifiedSession (+ SessionRich) / SessionTree / ScheduledJob
+  Actions     Recaller (AX recall + multi-display move) / EditorOpener
   Util        FileCache (mtime-keyed) / JSONLReader / TOMLLite / RRule
 ```
 
@@ -143,11 +158,11 @@ SessionCore (library)                 SessionMaster (menu-bar app)
 - **Cross-Space recall**: a window on another macOS *Space* (virtual desktop) is raised
   (macOS switches to it) but can't be *pulled* to you; only cross-**display** moves are done.
   Doing more would need private SkyLight APIs (SIP off) — out of scope.
-- **Codex Desktop**: sessions are read from `~/.codex/sessions` rollouts (works), but its
-  open-window UI state lives in an unreadable Chromium store, so recall is best-effort
-  (`open -a Codex`).
+- **Claude Desktop** has no deep link to navigate to an existing conversation (`claude://code/`
+  is mobile-only; the desktop `claude://resume` *forks*), so recalling a Claude Desktop session
+  just brings the app forward. (Codex Desktop *does* navigate, via `codex://threads/<id>`.)
 - Distributed as a **non-sandboxed, self-signed build** (it reads `~/.claude` & `~/.codex`,
-  runs `ps`/`git`/AppleScript). It is not notarized and not on the App Store.
+  runs `ps`/`git`/`gh`/AppleScript). It is not notarized and not on the App Store.
 
 ## Contributing
 
