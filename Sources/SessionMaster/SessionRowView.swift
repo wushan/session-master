@@ -187,6 +187,11 @@ struct SessionRowView: View {
     // Recall is the whole-row click, so the row only needs the secondary actions here.
     private var actions: some View {
         HStack(spacing: 2) {
+            if onRename != nil {
+                IconButton(systemName: "pencil", help: "Rename") {
+                    draft = session.displayTitle; editing = true
+                }
+            }
             IconButton(systemName: "chevron.left.forwardslash.chevron.right",
                        help: "Open worktree in editor", action: onVSCode)
             if let onReveal {
