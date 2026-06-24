@@ -14,7 +14,12 @@ final class SessionStore {
     private(set) var accessibilityTrusted = false
     private(set) var launchAtLogin = false
     private(set) var lastRefresh: Date?
+    private(set) var hasLoaded = false           // first poll done? (loading vs empty)
+    var selectedTab: DashboardTab = .sessions    // which dashboard tab is shown
     var lastRecallMessage: String?
+    /// Set by the menu-bar content (which owns SwiftUI's openWindow) so any view — even the
+    /// manually-hosted floating panel — can open the dashboard to a given tab.
+    @ObservationIgnored var openDashboard: ((DashboardTab) -> Void)?
 
     private var timer: Timer?
     private var refreshing = false
@@ -45,6 +50,7 @@ final class SessionStore {
                 self.jobs = jobs
                 self.accessibilityTrusted = trusted
                 self.lastRefresh = Date()
+                self.hasLoaded = true
                 self.refreshing = false
                 self.detectAttentionTransitions()
             }

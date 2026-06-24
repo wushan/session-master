@@ -35,9 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// Menu-bar label: icon + a count of sessions needing attention / busy.
 struct MenuBarLabel: View {
     let store: SessionStore
+    @State private var settings = AppSettings.shared
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: "square.grid.2x2.fill")
+            Image(systemName: settings.menuBarIcon)
             if store.needsApprovalCount > 0 {
                 Text("\(store.needsApprovalCount)").foregroundStyle(.red)        // needs approval
             } else if store.awaitingYouCount > 0 {

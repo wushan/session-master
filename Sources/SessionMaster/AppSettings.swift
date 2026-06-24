@@ -24,6 +24,13 @@ final class AppSettings {
         }
     }
 
+    /// SF Symbols offered for the menu-bar icon.
+    static let menuBarIcons = [
+        "bubble.left.and.bubble.right.fill", "square.stack.3d.up.fill", "rectangle.3.group.fill",
+        "point.3.filled.connected.trianglepath.dotted", "command", "waveform.path.ecg",
+    ]
+    var menuBarIcon: String { didSet { d.set(menuBarIcon, forKey: "menuBarIcon") } }
+
     var editor: Editor { didSet { d.set(editor.rawValue, forKey: "editor") } }
     /// e.g. `nvim` or `idea` — `{path}` is substituted, else the path is appended.
     var customEditorCommand: String { didSet { d.set(customEditorCommand, forKey: "customEditor") } }
@@ -32,6 +39,7 @@ final class AppSettings {
 
     private let d = UserDefaults.standard
     private init() {
+        menuBarIcon = d.string(forKey: "menuBarIcon") ?? AppSettings.menuBarIcons[0]
         editor = Editor(rawValue: d.string(forKey: "editor") ?? "") ?? .vscode
         customEditorCommand = d.string(forKey: "customEditor") ?? ""
         soundEnabled = d.object(forKey: "sound") as? Bool ?? true

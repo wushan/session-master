@@ -22,7 +22,10 @@ struct MenuContentView: View {
             header
             Divider()
             let sessions = popoverSessions
-            if sessions.isEmpty {
+            if !store.hasLoaded {
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading sessions…").foregroundStyle(.secondary) }
+                    .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 28)
+            } else if sessions.isEmpty {
                 Text("No active sessions").foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 24)
             } else {
@@ -45,6 +48,13 @@ struct MenuContentView: View {
             footer
         }
         .frame(width: 380)
+        .onAppear {
+            store.openDashboard = { tab in
+                store.selectedTab = tab
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
     }
 
     private var header: some View {
@@ -106,12 +116,14 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless).font(.caption).pointerCursor()
             .help(store.launchAtLogin ? "Launch at login: on" : "Launch at login: off")
-            Button { openDashboard(openWindow) } label: {
+            Button { store.selectedTab = .config; openDashboard(openWindow) } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless).pointerCursor().help("Settings")
+            Button { store.selectedTab = .sessions; openDashboard(openWindow) } label: {
                 Label("Dashboard", systemImage: "macwindow.badge.plus")
             }
             .buttonStyle(.borderedProminent).controlSize(.large).pointerCursor()
-            Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
-                .buttonStyle(.borderless).pointerCursor().help("Quit SessionMaster")
         }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 }

@@ -11,6 +11,11 @@ struct ConfigView: View {
 
     var body: some View {
         Form {
+            Section("Menu-bar icon") {
+                Picker("Icon", selection: $settings.menuBarIcon) {
+                    ForEach(AppSettings.menuBarIcons, id: \.self) { Image(systemName: $0).tag($0) }
+                }.pickerStyle(.segmented).labelsHidden()
+            }
             Section("Editor") {
                 Picker("Open worktrees in", selection: $settings.editor) {
                     ForEach(AppSettings.Editor.allCases) { Text($0.rawValue).tag($0) }
@@ -31,6 +36,10 @@ struct ConfigView: View {
                     get: { store.launchAtLogin }, set: { _ in store.toggleLaunchAtLogin() }))
                 Text("The ⚡ in the menu-bar popover toggles this too.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                Button("Quit SessionMaster", role: .destructive) { NSApp.terminate(nil) }
+                    .pointerCursor()
             }
         }
         .formStyle(.grouped)

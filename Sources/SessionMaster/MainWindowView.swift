@@ -1,16 +1,16 @@
 import SwiftUI
 import SessionCore
 
+enum DashboardTab: String, CaseIterable {
+    case sessions = "Sessions", automations = "Automations", config = "Config", about = "About"
+}
+
 struct MainWindowView: View {
     @Bindable var store: SessionStore
 
-    enum Tab: String, CaseIterable {
-        case sessions = "Sessions", automations = "Automations", config = "Config", about = "About"
-    }
     enum SourceFilter: String, CaseIterable { case all = "All", claude = "Claude", codex = "Codex" }
     enum SortMode: String, CaseIterable { case project = "Project", recent = "Recent" }
 
-    @State private var tab: Tab = .sessions
     @State private var sourceFilter: SourceFilter = .all
     @State private var sortMode: SortMode = .project
     @State private var search = ""
@@ -23,7 +23,7 @@ struct MainWindowView: View {
             toolbar
             Divider()
             if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
-            switch tab {
+            switch store.selectedTab {
             case .sessions:    sessionsList
             case .automations: automationsList
             case .config:      ConfigView(store: store)
@@ -38,11 +38,11 @@ struct MainWindowView: View {
 
     private var toolbar: some View {
         HStack(spacing: 12) {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            Picker("", selection: $store.selectedTab) {
+                ForEach(DashboardTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).fixedSize()
 
-            if tab == .sessions {
+            if store.selectedTab == .sessions {
                 Picker("", selection: $sourceFilter) {
                     ForEach(SourceFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented).fixedSize()
@@ -101,7 +101,9 @@ struct MainWindowView: View {
     }
 
     @ViewBuilder private var sessionsList: some View {
-        if filteredSessions.isEmpty {
+        if !store.hasLoaded {
+            loadingState
+        } else if filteredSessions.isEmpty {
             emptyState("No matching sessions")
         } else if sortMode == .recent {
             List(recentNodes) { node in
@@ -166,5 +168,14 @@ struct MainWindowView: View {
     private func emptyState(_ text: String) -> some View {
         VStack { Spacer(); Text(text).foregroundStyle(.secondary); Spacer() }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            ProgressView().controlSize(.small)
+            Text("Loading sessions…").font(.caption).foregroundStyle(.secondary)
+            Spacer()
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -15,7 +15,7 @@ struct SessionRowView: View {
         HStack(alignment: .top, spacing: 8) {
             // Clicking the row body recalls the session (the buttons handle other actions).
             HStack(alignment: .top, spacing: 8) {
-                statusDot
+                timelineLeading
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(session.displayTitle)
@@ -51,9 +51,21 @@ struct SessionRowView: View {
         .help(session.canRecall ? "Click to recall" : "")
     }
 
-    private var statusDot: some View {
-        Circle().fill(session.attention.color).frame(width: 8, height: 8)
-            .padding(.top, 4).help(session.attention.label)
+    /// A vertical timeline rail: the status dot sits at the top, a connector line runs down
+    /// through the row, so the list reads as a continuous timeline. Children keep a plain dot.
+    @ViewBuilder private var timelineLeading: some View {
+        if isChild {
+            Circle().fill(session.attention.color).frame(width: 7, height: 7)
+                .padding(.top, 4).help(session.attention.label)
+        } else {
+            VStack(spacing: 0) {
+                Circle().fill(session.attention.color).frame(width: 9, height: 9)
+                    .padding(.top, 3).help(session.attention.label)
+                Rectangle().fill(.quaternary).frame(width: 1.5)
+                    .frame(maxHeight: .infinity).padding(.top, 2)
+            }
+            .frame(width: 10)
+        }
     }
 
     private var sourceBadge: some View {

@@ -64,7 +64,7 @@ struct PinnedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("Sessions").font(.headline)
                 Spacer()
                 if store.needsApprovalCount > 0 {
@@ -75,14 +75,23 @@ struct PinnedView: View {
                     Label("\(store.awaitingYouCount)", systemImage: "person.fill.questionmark")
                         .font(.caption).foregroundStyle(.yellow)
                 }
+                Button { store.openDashboard?(.config) } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.borderless).pointerCursor().help("Settings")
+                Button { store.openDashboard?(.sessions) } label: { Image(systemName: "macwindow.badge.plus") }
+                    .buttonStyle(.borderless).pointerCursor().help("Open dashboard")
             }.padding(.horizontal, 12).padding(.vertical, 8)
             Divider()
+            if !store.hasLoaded {
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading…").foregroundStyle(.secondary) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
             ScrollView {
                 VStack(spacing: 4) {
                     ForEach(SessionTree.build(sessions, extraChildren: store.subagentChildren)) { node in
                         SessionNodeView(node: node, collapsed: $collapsed, store: store)
                     }
                 }.padding(8)
+            }
             }
         }
         .frame(minWidth: 340, minHeight: 260)
