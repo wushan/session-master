@@ -48,6 +48,7 @@ struct SessionNodeView: View {
         SessionRowView(session: s, isChild: isChild,
                        onRecall: { store.recall(s) },
                        onVSCode: { store.openInVSCode(s) },
-                       onReveal: { store.revealInFinder(s) })
+                       onReveal: { store.revealInFinder(s) },
+                       onRename: { store.setTitle($0, for: s) })
     }
 }

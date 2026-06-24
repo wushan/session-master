@@ -119,6 +119,10 @@ final class SessionStore {
     func revealInFinder(_ s: UnifiedSession) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: effectivePath(s))])
     }
+    func setTitle(_ title: String?, for s: UnifiedSession) {
+        CustomTitles.set(title, for: s.id)
+        refresh()
+    }
     func toggleLaunchAtLogin() { LoginItem.setEnabled(!launchAtLogin); launchAtLogin = LoginItem.isEnabled }
     func requestAccessibility() { _ = Recaller.ensureAccessibility(prompt: true) }
     func openAccessibilitySettings() {

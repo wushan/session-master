@@ -8,8 +8,12 @@ struct SessionRowView: View {
     let onRecall: () -> Void
     let onVSCode: () -> Void
     var onReveal: (() -> Void)? = nil
+    var onRename: ((String?) -> Void)? = nil
 
     @State private var hovering = false
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -18,11 +22,23 @@ struct SessionRowView: View {
                 timelineLeading
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(session.displayTitle)
-                            .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
-                        sourceBadge
-                        if session.isAutomationRun { autoBadge }
-                        prChip
+                        if editing {
+                            TextField("Title", text: $draft)
+                                .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 12 : 13))
+                                .frame(maxWidth: 220).focused($titleFocused)
+                                .onAppear { titleFocused = true }
+                                .onSubmit { onRename?(draft); editing = false }
+                                .onExitCommand { editing = false }
+                        } else {
+                            Text(session.displayTitle)
+                                .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
+                            if session.rich.customTitle != nil {
+                                Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.tertiary)
+                            }
+                            sourceBadge
+                            if session.isAutomationRun { autoBadge }
+                            prChip
+                        }
                     }
                     metaLine
                     HStack(spacing: 6) {
@@ -49,6 +65,16 @@ struct SessionRowView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { hovering = $0 }
         .help(session.canRecall ? "Click to recall" : "")
+        .contextMenu {
+            Button("Rename…") { draft = session.displayTitle; editing = true }
+            if session.rich.customTitle != nil {
+                Button("Reset to default title") { onRename?(nil) }
+            }
+            Divider()
+            if session.canRecall { Button("Recall window") { onRecall() } }
+            Button("Open in editor") { onVSCode() }
+            if let onReveal { Button("Reveal in Finder") { onReveal() } }
+        }
     }
 
     /// A vertical timeline rail with the last-activity time on the left as the time axis: the

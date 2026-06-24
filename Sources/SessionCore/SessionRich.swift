@@ -11,6 +11,7 @@ public struct SessionRich: Sendable {
     public var prState: String?        // "OPEN" | "DRAFT" | "MERGED" | "CLOSED"
     public var prReviewDecision: String?
     public var contextPercent: Int?    // % of the model context window used
+    public var customTitle: String?    // user-set name (overrides the auto title)
 
     public init() {}
 }

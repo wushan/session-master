@@ -82,7 +82,7 @@ public struct UnifiedSession: Identifiable, Sendable {
     public var isWorktree: Bool {
         worktreeName != nil || cwd.contains("/.claude/worktrees/") || cwd.contains("/.codex/worktrees/")
     }
-    public var displayTitle: String { name ?? title ?? projectName }
+    public var displayTitle: String { rich.customTitle ?? name ?? title ?? projectName }
     /// One-line "what is this session doing" — the last user ask or the AI-generated title.
     public var subtitle: String? { rich.lastPrompt ?? rich.aiTitle }
 
@@ -132,6 +132,7 @@ public enum SessionAggregator {
         var sessions = claude + codex + desktop
         for i in sessions.indices {
             let s = sessions[i]
+            sessions[i].rich.customTitle = CustomTitles.get(s.id)
             let dir = GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
             sessions[i].rich.git = GitStatusCollector.status(dir: dir)
             if let b = s.branch, !b.isEmpty, b != "HEAD", let pr = PRStatus.forBranch(b, repoDir: dir) {
