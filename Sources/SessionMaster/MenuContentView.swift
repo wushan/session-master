@@ -6,13 +6,13 @@ struct MenuContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var collapsed: Set<String> = []
 
-    /// The popover is a quick menu: show live sessions + recently-active ones, not the full
-    /// archive of saved Desktop sessions (those live in the dashboard, grouped per project).
+    /// Show every session so you can pick any one back up — sorted so the ones needing you
+    /// (and then the most recently active) are at the top.
     private var popoverSessions: [UnifiedSession] {
-        store.sessions.filter { s in
-            if s.pid != nil { return true }
-            guard let u = s.updatedAt else { return false }
-            return Date().timeIntervalSince(u) < 3 * 3600
+        store.sessions.sorted {
+            $0.attention.rank != $1.attention.rank
+                ? $0.attention.rank < $1.attention.rank
+                : ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
         }
     }
 
@@ -99,10 +99,12 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless).font(.caption).pointerCursor()
             .help(store.launchAtLogin ? "Launch at login: on" : "Launch at login: off")
-            Button { openDashboard(openWindow) } label: { Label("Dashboard", systemImage: "macwindow") }
-                .buttonStyle(.borderless).font(.caption).pointerCursor()
-            Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.borderless).font(.caption).pointerCursor()
-        }.padding(.horizontal, 12).padding(.vertical, 6)
+            Button { openDashboard(openWindow) } label: {
+                Label("Dashboard", systemImage: "macwindow.badge.plus")
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large).pointerCursor()
+            Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
+                .buttonStyle(.borderless).pointerCursor().help("Quit SessionMaster")
+        }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 }

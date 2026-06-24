@@ -6,9 +6,11 @@ struct MainWindowView: View {
 
     enum Tab: String, CaseIterable { case sessions = "Sessions", automations = "Automations" }
     enum SourceFilter: String, CaseIterable { case all = "All", claude = "Claude", codex = "Codex" }
+    enum SortMode: String, CaseIterable { case project = "Project", recent = "Recent" }
 
     @State private var tab: Tab = .sessions
     @State private var sourceFilter: SourceFilter = .all
+    @State private var sortMode: SortMode = .project
     @State private var search = ""
     @State private var collapsed: Set<String> = []
     @State private var expandedProjects: Set<String> = []
@@ -40,6 +42,9 @@ struct MainWindowView: View {
                 Picker("", selection: $sourceFilter) {
                     ForEach(SourceFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented).fixedSize()
+                Picker("", selection: $sortMode) {
+                    ForEach(SortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }.pickerStyle(.segmented).fixedSize().help("Sort order")
             }
             Spacer()
             HStack(spacing: 4) {
@@ -82,9 +87,23 @@ struct MainWindowView: View {
             .sorted { $0.project.localizedCaseInsensitiveCompare($1.project) == .orderedAscending }
     }
 
+    /// Flat list across all projects, most-recently-active first (needs-you still on top).
+    private var recentNodes: [SessionNode] {
+        SessionTree.build(filteredSessions, extraChildren: store.subagentChildren).sorted {
+            $0.session.attention.rank != $1.session.attention.rank
+                ? $0.session.attention.rank < $1.session.attention.rank
+                : ($0.session.updatedAt ?? .distantPast) > ($1.session.updatedAt ?? .distantPast)
+        }
+    }
+
     @ViewBuilder private var sessionsList: some View {
         if filteredSessions.isEmpty {
             emptyState("No matching sessions")
+        } else if sortMode == .recent {
+            List(recentNodes) { node in
+                SessionNodeView(node: node, collapsed: $collapsed, store: store)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
+            }.listStyle(.inset)
         } else {
             List {
                 ForEach(grouped, id: \.project) { group in

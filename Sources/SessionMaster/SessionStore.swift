@@ -18,9 +18,13 @@ final class SessionStore {
 
     private var timer: Timer?
     private var refreshing = false
+    private var prevAttention: [String: UnifiedSession.Attention] = [:]
+    private var notifyArmed = false
+    var soundEnabled = true
 
     func start() {
         launchAtLogin = LoginItem.isEnabled
+        Notifier.requestAuthorization()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -42,8 +46,30 @@ final class SessionStore {
                 self.accessibilityTrusted = trusted
                 self.lastRefresh = Date()
                 self.refreshing = false
+                self.detectAttentionTransitions()
             }
         }
+    }
+
+    /// Notify (sound + banner) when a session newly needs the user — finished its turn or
+    /// hit a permission prompt. Skips the first refresh so launch doesn't flood notifications.
+    private func detectAttentionTransitions() {
+        if notifyArmed {
+            for s in sessions {
+                guard let old = prevAttention[s.id], old != s.attention else { continue }
+                switch s.attention {
+                case .needsApproval:
+                    Notifier.fire(title: s.displayTitle, body: "Needs your approval",
+                                  soundName: "Funk", withSound: soundEnabled)
+                case .awaitingYou:
+                    Notifier.fire(title: s.displayTitle, body: "Finished — your turn",
+                                  soundName: "Glass", withSound: soundEnabled)
+                default: break
+                }
+            }
+        }
+        prevAttention = Dictionary(sessions.map { ($0.id, $0.attention) }, uniquingKeysWith: { a, _ in a })
+        notifyArmed = true
     }
 
     var needsApprovalCount: Int { sessions.filter { $0.attention == .needsApproval }.count }
