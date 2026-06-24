@@ -54,15 +54,17 @@ public struct UnifiedSession: Identifiable, Sendable {
     public let waitingFor: String?
     public let terminal: TerminalInfo
     public let updatedAt: Date?
+    public let isAutomationRun: Bool     // a Codex automation execution (vs a manual session)
 
     public init(id: String, source: Source, pid: pid_t?, cwd: String, name: String?, title: String?,
                 model: String?, effort: String?, branch: String?, worktreeName: String?,
                 originator: String?, status: Status, waitingFor: String?,
-                terminal: TerminalInfo, updatedAt: Date?) {
+                terminal: TerminalInfo, updatedAt: Date?, isAutomationRun: Bool = false) {
         self.id = id; self.source = source; self.pid = pid; self.cwd = cwd; self.name = name
         self.title = title; self.model = model; self.effort = effort; self.branch = branch
         self.worktreeName = worktreeName; self.originator = originator; self.status = status
         self.waitingFor = waitingFor; self.terminal = terminal; self.updatedAt = updatedAt
+        self.isAutomationRun = isAutomationRun
     }
 
     /// Project name, stripping the worktree suffix so sessions group by repo.
@@ -109,11 +111,7 @@ public enum SessionAggregator {
     /// Top-level sessions plus a map of parent id → sub-agent children (Codex sub-agents).
     public static func snapshot() -> (sessions: [UnifiedSession], subagents: [String: [UnifiedSession]]) {
         let claude = claudeSessions()
-        // Hide automation runs (shown in the Automations tab) and bare sub-agent rollouts
-        // (shown nested under their parent), leaving user-opened sessions + companions.
-        let codexRaw = CodexSessionCollector.recent().filter {
-            $0.threadSource != "automation" && $0.threadSource != "subagent"
-        }
+        let codexRaw = filterCodex(CodexSessionCollector.recent())
         let codex = codexRaw.map(unified(from:))
         var subagents: [String: [UnifiedSession]] = [:]
         for c in codexRaw {
@@ -164,9 +162,31 @@ public enum SessionAggregator {
     // MARK: Codex (recent rollouts)
 
     public static func codexSessions() -> [UnifiedSession] {
-        CodexSessionCollector.recent()
-            .filter { $0.threadSource != "automation" && $0.threadSource != "subagent" }
-            .map(unified(from:))
+        filterCodex(CodexSessionCollector.recent()).map(unified(from:))
+    }
+
+    /// How long an automation run stays visible after its last activity, so you can follow up
+    /// on a just-finished automation. Stale runs drop off (they live in the Automations tab).
+    static let automationActiveWindow: TimeInterval = 30 * 60
+
+    /// Drop bare sub-agent rollouts (shown nested). Keep manual sessions; keep automation runs
+    /// only while recently active, deduped to the latest per project so the list stays clean.
+    static func filterCodex(_ sessions: [CodexSession]) -> [CodexSession] {
+        var latestAutomation: [String: CodexSession] = [:]
+        var out: [CodexSession] = []
+        for c in sessions {
+            switch c.threadSource {
+            case "subagent": continue
+            case "automation":
+                guard Date().timeIntervalSince(c.mtime) < automationActiveWindow else { continue }
+                let key = (c.title ?? "") + "\u{1}" + c.cwd
+                if let prev = latestAutomation[key], prev.mtime >= c.mtime { continue }
+                latestAutomation[key] = c
+            default:
+                out.append(c)
+            }
+        }
+        return out + latestAutomation.values
     }
 
     static func unified(from c: CodexSession) -> UnifiedSession {
@@ -177,7 +197,8 @@ public enum SessionAggregator {
             model: c.model, effort: c.effort, branch: c.branch, worktreeName: nil,
             originator: c.originator,
             status: codexStatus(mtime: c.mtime),
-            waitingFor: nil, terminal: .dead, updatedAt: c.mtime)
+            waitingFor: nil, terminal: .dead, updatedAt: c.mtime,
+            isAutomationRun: c.threadSource == "automation")
     }
 
     /// A Codex sub-agent shown as a child row (not a recallable window of its own).

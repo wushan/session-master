@@ -37,6 +37,19 @@ swift run recall-probe list | all | tree | jobs
 - The on-disk formats of Claude Code / Codex are undocumented and change between builds; when
   you add a field, note the build you observed it on and fail soft if it's missing.
 
+## Releasing
+
+Develop freely on `main` — commits there do **not** ship to users. When you want to cut a
+release, accumulate the changes, then run one command:
+
+```sh
+scripts/release.sh 0.2.0
+```
+
+It builds the `.dmg`, tags `v0.2.0`, creates the GitHub Release, and bumps the Homebrew cask
+in `wushan/homebrew-tap` (version + sha256). Users get it via
+`brew upgrade --cask wushan/tap/session-master`.
+
 ## Reporting issues
 
 Please include your macOS version, the Claude Code / Codex versions, and (if relevant) a

@@ -12,31 +12,39 @@ struct SessionRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            statusDot
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(session.displayTitle)
-                        .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
-                    sourceBadge
-                }
-                metaLine
-                if !isChild || session.branch != nil {
+            // Clicking the row body recalls the session (the buttons handle other actions).
+            HStack(alignment: .top, spacing: 8) {
+                statusDot
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
-                        Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                        Text(session.displayTitle)
+                            .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
+                        sourceBadge
+                        if session.isAutomationRun { autoBadge }
+                    }
+                    metaLine
+                    if !isChild || session.branch != nil {
+                        HStack(spacing: 6) {
+                            if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
+                            Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                        }
+                    }
+                    if session.attention == .needsApproval, let w = session.waitingFor {
+                        Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
                     }
                 }
-                if session.attention == .needsApproval, let w = session.waitingFor {
-                    Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
-                }
+                Spacer(minLength: 4)
             }
-            Spacer(minLength: 4)
+            .contentShape(Rectangle())
+            .onTapGesture { if session.canRecall { onRecall() } }
+            .pointerCursor(session.canRecall)
             actions
         }
         .padding(.vertical, isChild ? 5 : 8).padding(.horizontal, 8)
         .background(hovering ? Color.primary.opacity(0.06) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { hovering = $0 }
+        .help(session.canRecall ? "Click to recall" : "")
     }
 
     private var statusDot: some View {
@@ -53,6 +61,13 @@ struct SessionRowView: View {
             .clipShape(Capsule())
     }
 
+    private var autoBadge: some View {
+        Text("auto").font(.system(size: 9, weight: .bold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(Color.secondary.opacity(0.18)).foregroundStyle(.secondary)
+            .clipShape(Capsule())
+    }
+
     private var metaLine: some View {
         HStack(spacing: 6) {
             if let m = session.shortModel { Text(m) }
@@ -60,7 +75,19 @@ struct SessionRowView: View {
             Text("·").foregroundStyle(.quaternary)
             Text(session.terminal.terminalApp ?? originatorText)
             if session.terminal.viaTmux { Text("· tmux") }
+            if let age = relativeAge { Text("· \(age)").foregroundStyle(.tertiary) }
         }.font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+    }
+
+    /// Last-activity age, e.g. "2m" / "3h" — the freshness signal for active vs stale.
+    private var relativeAge: String? {
+        guard let d = session.updatedAt else { return nil }
+        let s = -d.timeIntervalSinceNow
+        if s < 0 { return nil }
+        if s < 60 { return "now" }
+        if s < 3600 { return "\(Int(s / 60))m" }
+        if s < 86_400 { return "\(Int(s / 3600))h" }
+        return "\(Int(s / 86_400))d"
     }
 
     private var originatorText: String {
