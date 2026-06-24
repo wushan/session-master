@@ -35,6 +35,10 @@ puts it in one place, with one-click recall.
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.
 - **Launch at login**, menu-bar only (no Dock clutter).
 
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="SessionMaster dashboard window" width="720">
+</p>
+
 ### Status colors
 
 | Dot | Meaning |
