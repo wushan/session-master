@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/icon-preview.png" alt="SessionMaster icon" width="128">
+</p>
+
 # SessionMaster
 
 **One live menu-bar console for every AI coding session on your Mac** — Claude Code and

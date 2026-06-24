@@ -2,6 +2,14 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.2] — 2026-06-25
+
+### Added
+- App icon — three concentric neon-green rings on deep purple.
+- `scripts/notarize.sh` — Developer ID signing + notarization for clean Gatekeeper on direct
+  distribution. (The Mac App Store isn't viable: the sandbox forbids this app's arbitrary file
+  access, subprocesses, and Accessibility-based window control.)
+
 ## [0.2.1] — 2026-06-25
 
 ### Added
