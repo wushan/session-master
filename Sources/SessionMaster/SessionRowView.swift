@@ -63,6 +63,9 @@ struct SessionRowView: View {
         .padding(.vertical, isChild ? 5 : 8).padding(.horizontal, 8)
         .background(hovering ? Color.primary.opacity(0.06) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        // Old sessions (>48h idle) fade to grayscale so the live ones stand out — still clickable.
+        .saturation(session.isStale && !editing ? 0 : 1)
+        .opacity(session.isStale && !hovering && !editing ? 0.5 : 1)
         .onHover { hovering = $0 }
         .help(session.canRecall ? "Click to recall" : "")
         .contextMenu {

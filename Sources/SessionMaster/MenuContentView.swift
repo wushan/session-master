@@ -6,27 +6,34 @@ struct MenuContentView: View {
     @Bindable var floating: FloatingPanel
     @Environment(\.openWindow) private var openWindow
     @State private var collapsed: Set<String> = []
+    @State private var search = ""
 
     /// Show every session so you can pick any one back up — sorted so the ones needing you
     /// (and then the most recently active) are at the top.
     private var popoverSessions: [UnifiedSession] {
-        store.sessions.sorted {
+        let sorted = store.sessions.sorted {
             $0.attention.rank != $1.attention.rank
                 ? $0.attention.rank < $1.attention.rank
                 : ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
+        }
+        guard !search.isEmpty else { return sorted }
+        return sorted.filter { s in
+            [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
+                .compactMap { $0 }.joined(separator: " ").localizedCaseInsensitiveContains(search)
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            searchBar
             Divider()
             let sessions = popoverSessions
             if !store.hasLoaded {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading sessions…").foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 28)
             } else if sessions.isEmpty {
-                Text("No active sessions").foregroundStyle(.secondary)
+                Text(search.isEmpty ? "No active sessions" : "No matches").foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 24)
             } else {
                 ScrollView {
@@ -55,6 +62,20 @@ struct MenuContentView: View {
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(.secondary)
+            TextField("Filter sessions", text: $search).textFieldStyle(.plain).font(.caption)
+            if !search.isEmpty {
+                Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.tertiary).pointerCursor()
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .background(Color.primary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 10).padding(.vertical, 6)
     }
 
     private var header: some View {

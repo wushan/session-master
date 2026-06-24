@@ -82,6 +82,11 @@ public struct UnifiedSession: Identifiable, Sendable {
     public var isWorktree: Bool {
         worktreeName != nil || cwd.contains("/.claude/worktrees/") || cwd.contains("/.codex/worktrees/")
     }
+    /// No interaction for >48h — shown dimmed/grayscale (still recallable) to mark it as old.
+    public var isStale: Bool {
+        guard let u = updatedAt else { return false }
+        return Date().timeIntervalSince(u) > 48 * 3600
+    }
     public var displayTitle: String { rich.customTitle ?? name ?? title ?? projectName }
     /// One-line "what is this session doing" — the last user ask or the AI-generated title.
     public var subtitle: String? { rich.lastPrompt ?? rich.aiTitle }
