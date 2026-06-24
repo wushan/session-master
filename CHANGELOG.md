@@ -2,6 +2,22 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.1] — 2026-06-25
+
+### Added
+- **Timeline list**: last-activity time on a left axis; the status dot **pulses** while a
+  session is actively working.
+- **Rename sessions** to a custom title (click the ✏️ to edit; clear + return resets).
+- **Quick-filter box** in the menu-bar popover (by title / project / branch / model / cwd /
+  last prompt).
+- **Configurable menu-bar icon** (Config), a **gear** in the popover and floating panel, and a
+  **loading state** on first launch instead of a blank list.
+
+### Changed
+- The popover now lists every session sorted needs-you-first; sessions idle **>48h fade to
+  grayscale** (still recallable) so live ones stand out.
+- Removed the easy-to-misclick Quit/power icon from the popover (Quit now lives in Config).
+
 ## [0.2.0] — 2026-06-24
 
 ### Added

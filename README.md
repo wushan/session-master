@@ -32,6 +32,9 @@ puts it in one place, with one-click recall.
 - **Rich at-a-glance status on each row**: git branch state (merged / ↑unpushed / ↓behind /
   local), uncommitted change count, **clickable PR badge** (open / draft / merged), context-
   window %, and the session's last prompt.
+- **Timeline list** — last-activity time on a left axis; the dot **pulses** while a session is
+  actively working, and sessions idle >48h fade to grayscale so the live ones stand out.
+- **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list.
 - **Parent → child hierarchy**: a Claude session and the Codex companion / sub-agents it
   spawned are nested under it (collapsible).
 - **One-click Recall** (click the row): raises the exact terminal window that owns a session —
@@ -43,7 +46,7 @@ puts it in one place, with one-click recall.
 - **Dashboard** with Project / Recent sort, source filter, and search; **Config** and **About**
   (version + one-click *Update via Homebrew*) tabs.
 - **Pin to a floating window** that stays on top and doesn't dismiss when you click away.
-- **Launch at login**, menu-bar only (no Dock clutter).
+- **Launch at login**, menu-bar only — with a **configurable menu-bar icon**.
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="SessionMaster dashboard window" width="720">
