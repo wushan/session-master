@@ -8,9 +8,13 @@ VERSION="${1:?usage: scripts/release.sh <version>}"
 TAG="v$VERSION"
 TAP_REPO="git@github.com:wushan/homebrew-tap.git"
 
-# 0. sanity — clean tree, not already tagged
-[ -z "$(git -C "$ROOT" status --porcelain)" ] || { echo "✗ working tree not clean — commit first"; exit 1; }
+# 0. sanity — not already tagged; bump the VERSION file (single source of truth)
 git -C "$ROOT" rev-parse "$TAG" >/dev/null 2>&1 && { echo "✗ tag $TAG already exists"; exit 1; }
+echo "$VERSION" > "$ROOT/VERSION"
+git -C "$ROOT" add VERSION
+git -C "$ROOT" diff --cached --quiet || git -C "$ROOT" commit -qm "release: v$VERSION"
+[ -z "$(git -C "$ROOT" status --porcelain)" ] || { echo "✗ working tree not clean — commit first"; exit 1; }
+git -C "$ROOT" push -q origin main
 
 # 1. build the installer
 "$ROOT/scripts/make-dmg.sh" "$VERSION"

@@ -4,7 +4,9 @@ import SessionCore
 struct MainWindowView: View {
     @Bindable var store: SessionStore
 
-    enum Tab: String, CaseIterable { case sessions = "Sessions", automations = "Automations" }
+    enum Tab: String, CaseIterable {
+        case sessions = "Sessions", automations = "Automations", config = "Config", about = "About"
+    }
     enum SourceFilter: String, CaseIterable { case all = "All", claude = "Claude", codex = "Codex" }
     enum SortMode: String, CaseIterable { case project = "Project", recent = "Recent" }
 
@@ -24,6 +26,8 @@ struct MainWindowView: View {
             switch tab {
             case .sessions:    sessionsList
             case .automations: automationsList
+            case .config:      ConfigView(store: store)
+            case .about:       AboutView()
             }
         }
         .frame(minWidth: 560, minHeight: 420)

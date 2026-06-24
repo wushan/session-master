@@ -134,6 +134,12 @@ public enum SessionAggregator {
             let s = sessions[i]
             let dir = GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
             sessions[i].rich.git = GitStatusCollector.status(dir: dir)
+            if let b = s.branch, !b.isEmpty, b != "HEAD", let pr = PRStatus.forBranch(b, repoDir: dir) {
+                sessions[i].rich.prNumber = pr.number
+                sessions[i].rich.prURL = sessions[i].rich.prURL ?? pr.url
+                sessions[i].rich.prState = pr.displayState
+                sessions[i].rich.prReviewDecision = pr.reviewDecision
+            }
         }
         return (sessions.sorted(by: order), subagents)
     }
@@ -185,6 +191,7 @@ public enum SessionAggregator {
                 waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt)
             u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
             u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
+            u.rich.contextPercent = h?.contextPercent
             return u
         }
     }

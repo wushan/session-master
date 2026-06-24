@@ -8,6 +8,7 @@ public struct ClaudeHistory: Sendable {
     public let lastPrompt: String?
     public let prNumber: Int?
     public let prURL: String?
+    public let contextPercent: Int?
 }
 
 /// Claude CLI sessions only record pid/cwd/name/status in `~/.claude/sessions`. The
@@ -43,13 +44,18 @@ public enum ClaudeHistoryEnricher {
         guard let url = transcriptURL(sessionId: sessionId, cwd: cwd) else { return nil }
         return cache.value(path: url.path, stamp: fileStamp(url)) {
             var model: String?, branch: String?, aiTitle: String?, lastPrompt: String?
-            var prNumber: Int?, prURL: String?
+            var prNumber: Int?, prURL: String?, ctxTokens: Int?
             for d in JSONLReader.tailObjects(url).reversed() {
+                let msg = d["message"] as? [String: Any]
                 // Only accept real model ids; Claude writes "<synthetic>" system turns
                 // (often the very last record) that must not be shown as the model.
-                if model == nil, let m = (d["message"] as? [String: Any])?["model"] as? String,
-                   m.hasPrefix("claude-") { model = m }
+                if model == nil, let m = msg?["model"] as? String, m.hasPrefix("claude-") { model = m }
                 if branch == nil, let b = d["gitBranch"] as? String, b != "HEAD", !b.isEmpty { branch = b }
+                if ctxTokens == nil, let u = msg?["usage"] as? [String: Any] {   // latest assistant turn
+                    ctxTokens = ((u["input_tokens"] as? Int) ?? 0)
+                        + ((u["cache_read_input_tokens"] as? Int) ?? 0)
+                        + ((u["cache_creation_input_tokens"] as? Int) ?? 0)
+                }
                 switch d["type"] as? String {
                 case "ai-title":   if aiTitle == nil { aiTitle = d["aiTitle"] as? String }
                 case "last-prompt": if lastPrompt == nil { lastPrompt = d["lastPrompt"] as? String }
@@ -58,8 +64,10 @@ public enum ClaudeHistoryEnricher {
                 default: break
                 }
             }
+            let window = (model ?? "").localizedCaseInsensitiveContains("1m") ? 1_000_000.0 : 200_000.0
+            let pct = ctxTokens.map { min(100, Int(Double($0) / window * 100)) }
             return ClaudeHistory(model: model, branch: branch, aiTitle: aiTitle,
-                                 lastPrompt: lastPrompt, prNumber: prNumber, prURL: prURL)
+                                 lastPrompt: lastPrompt, prNumber: prNumber, prURL: prURL, contextPercent: pct)
         }
     }
 }

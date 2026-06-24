@@ -3,7 +3,7 @@
 # Usage: scripts/make-dmg.sh [version]
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VERSION="${1:-0.1.0}"
+VERSION="${1:-$(cat "$ROOT/VERSION" 2>/dev/null || echo 0.0.0)}"
 
 "$ROOT/scripts/bundle-app.sh" release
 APP="$ROOT/build/SessionMaster.app"

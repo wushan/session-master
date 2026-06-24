@@ -83,6 +83,7 @@ struct SessionRowView: View {
             }
             if g.dirtyCount > 0 { chip("\(g.dirtyCount)Δ", .yellow) }
         }
+        if let c = session.rich.contextPercent { chip("\(c)% ctx", c >= 80 ? .red : .secondary) }
     }
 
     @ViewBuilder private var prChip: some View {

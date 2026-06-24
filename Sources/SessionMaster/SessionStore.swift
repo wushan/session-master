@@ -20,7 +20,7 @@ final class SessionStore {
     private var refreshing = false
     private var prevAttention: [String: UnifiedSession.Attention] = [:]
     private var notifyArmed = false
-    var soundEnabled = true
+    private let settings = AppSettings.shared
 
     func start() {
         launchAtLogin = LoginItem.isEnabled
@@ -54,16 +54,16 @@ final class SessionStore {
     /// Notify (sound + banner) when a session newly needs the user — finished its turn or
     /// hit a permission prompt. Skips the first refresh so launch doesn't flood notifications.
     private func detectAttentionTransitions() {
-        if notifyArmed {
+        if notifyArmed, settings.notificationsEnabled {
             for s in sessions {
                 guard let old = prevAttention[s.id], old != s.attention else { continue }
                 switch s.attention {
                 case .needsApproval:
                     Notifier.fire(title: s.displayTitle, body: "Needs your approval",
-                                  soundName: "Funk", withSound: soundEnabled)
+                                  soundName: "Funk", withSound: settings.soundEnabled)
                 case .awaitingYou:
                     Notifier.fire(title: s.displayTitle, body: "Finished — your turn",
-                                  soundName: "Glass", withSound: soundEnabled)
+                                  soundName: "Glass", withSound: settings.soundEnabled)
                 default: break
                 }
             }
@@ -104,8 +104,12 @@ final class SessionStore {
     func effectivePath(_ s: UnifiedSession) -> String {
         GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
     }
-    func openInVSCode(_ s: UnifiedSession) { VSCodeOpener.open(effectivePath(s)) }
-    func openInVSCode(path: String) { VSCodeOpener.open(path) }
+    func openInVSCode(_ s: UnifiedSession) { openInEditor(effectivePath(s)) }
+    func openInVSCode(path: String) { openInEditor(path) }
+    private func openInEditor(_ path: String) {
+        EditorOpener.open(path: path, appName: settings.editor.appName,
+                          customCommand: settings.editor == .custom ? settings.customEditorCommand : nil)
+    }
     func revealInFinder(_ s: UnifiedSession) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: effectivePath(s))])
     }
