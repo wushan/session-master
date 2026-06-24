@@ -11,4 +11,9 @@ public enum AppActivator {
         guard let app = NSRunningApplication(processIdentifier: pid) else { return false }
         return app.activate()
     }
+
+    /// Open a deep link (e.g. `codex://threads/<id>`) to navigate an app to a specific view.
+    public static func openDeeplink(_ url: String) {
+        Shell.run("/usr/bin/open", [url])
+    }
 }

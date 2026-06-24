@@ -57,7 +57,8 @@ final class SessionStore {
         case .claudeDesktop:
             AppActivator.bringToFront(appNamed: "Claude"); outcome = .foregroundedApp("Claude")
         case .codexDesktop:
-            AppActivator.bringToFront(appNamed: "Codex"); outcome = .foregroundedApp("Codex")
+            // Codex registers codex://threads/<id> — navigate straight to the conversation.
+            AppActivator.openDeeplink("codex://threads/\(s.id)"); outcome = .foregroundedApp("Codex")
         case .codexCLI:
             if s.terminal.terminalPID != nil {
                 outcome = Recaller.recall(s.recallTarget)
