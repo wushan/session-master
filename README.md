@@ -4,12 +4,25 @@
 
 # SessionMaster
 
+<p align="center">
+  <a href="https://github.com/wushan/session-master/releases/latest"><img src="https://img.shields.io/github/v/release/wushan/session-master?label=release&color=0a84ff" alt="latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-14+-111?logo=apple&logoColor=white" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license">
+  <img src="https://img.shields.io/badge/Claude%20Code%20·%20Codex-CLI%20%2B%20Desktop-bf5af2" alt="Claude Code + Codex">
+</p>
+
 **One live menu-bar console for every AI coding session on your Mac** — Claude Code and
-Codex, across CLI **and** desktop apps. Stop juggling a dozen terminal windows and app
-windows: see every session, know which one needs you, and jump straight to it.
+Codex, across CLI **and** desktop apps. Stop juggling a dozen terminal and app windows:
+see every session, know which one needs you, and jump straight to it.
 
 <p align="center">
-  <img src="docs/images/menubar.png" alt="SessionMaster menu-bar popover" width="480">
+  <img src="docs/images/popover.png" alt="SessionMaster menu-bar popover" width="372"><br>
+  <sub>The menu-bar popover — every Claude &amp; Codex session, what each one needs, one click to jump back.</sub>
+</p>
+
+<p align="center">
+  <b>Install</b> &nbsp;·&nbsp; <code>brew install --cask wushan/tap/session-master</code>
+  &nbsp;·&nbsp; <a href="https://github.com/wushan/session-master/releases/latest">or grab the .dmg →</a>
 </p>
 
 ## Why
@@ -57,7 +70,8 @@ puts it in one place, with one-click recall.
 - **Launch at login**, menu-bar only — with a **configurable menu-bar icon**.
 
 <p align="center">
-  <img src="docs/images/dashboard.png" alt="SessionMaster dashboard window" width="720">
+  <img src="docs/images/dashboard.png" alt="SessionMaster dashboard window" width="760"><br>
+  <sub>The dashboard — sidebar tabs, source filter, Project/Recent sort, search, and a rich row per session.</sub>
 </p>
 
 ### Status colors
