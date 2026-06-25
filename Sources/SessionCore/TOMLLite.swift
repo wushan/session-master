@@ -46,9 +46,21 @@ public enum TOMLLite {
 
     static func array(_ s: String) -> [String] {
         guard let l = s.firstIndex(of: "["), let r = s.lastIndex(of: "]"), l < r else { return [] }
-        return s[s.index(after: l)..<r]
-            .split(separator: ",")
-            .map { unquote($0.trimmingCharacters(in: .whitespaces)) }
-            .filter { !$0.isEmpty }
+        // Split on commas, but not on commas inside a quoted string (paths can contain commas).
+        var items: [String] = []
+        var current = ""; var inString = false; var escaped = false
+        for ch in s[s.index(after: l)..<r] {
+            if escaped { current.append(ch); escaped = false }
+            else if inString && ch == "\\" { current.append(ch); escaped = true }
+            else if ch == "\"" { inString.toggle(); current.append(ch) }
+            else if ch == "," && !inString {
+                let v = unquote(current.trimmingCharacters(in: .whitespaces))
+                if !v.isEmpty { items.append(v) }
+                current = ""
+            } else { current.append(ch) }
+        }
+        let v = unquote(current.trimmingCharacters(in: .whitespaces))
+        if !v.isEmpty { items.append(v) }
+        return items
     }
 }

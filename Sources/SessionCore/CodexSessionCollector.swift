@@ -10,7 +10,7 @@ public struct CodexSession: Sendable, Identifiable {
     public let originator: String?     // "Codex Desktop" | "VSCode" | "CLI" | "Claude Code"
     public let model: String?
     public let effort: String?
-    public let title: String?
+    public var title: String?           // applied outside the rollout cache (renames independently)
     public let mtime: Date
     public let url: URL                 // rollout file (for sub-agent scanning)
     public let threadSource: String?    // "user" | "automation" | "subagent" | nil(companion)
@@ -24,8 +24,10 @@ public enum CodexSessionCollector {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/session_index.jsonl")
     }
 
-    /// Recently-active sessions: rollouts modified within `within`, newest first, capped.
-    public static func recent(within: TimeInterval = 2 * 3600, limit: Int = 25) -> [CodexSession] {
+    /// Recently-active sessions: rollouts modified within `within`, newest first, capped. The cap
+    /// is generous so an active session (and its scanned sub-agents) isn't pushed off the list by
+    /// a burst of other rollouts.
+    public static func recent(within: TimeInterval = 3 * 3600, limit: Int = 60) -> [CodexSession] {
         let fm = FileManager.default
         let cutoff = Date().addingTimeInterval(-within)
         let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey]
@@ -47,13 +49,16 @@ public enum CodexSessionCollector {
 
     static func parse(_ url: URL, mtime: Date, titles: [String: String]) -> CodexSession? {
         // Re-parse only when the rollout changed; session_meta is immutable and the latest
-        // turn_context only changes as the file grows (mtime+size stamp captures both).
-        cache.value(path: url.path, stamp: mtime.timeIntervalSince1970 * 1_000_000) {
-            parseUncached(url, mtime: mtime, titles: titles)
-        }
+        // turn_context only changes as the file grows (mtime stamp captures that). The title comes
+        // from a *separate* index that can change without the rollout, so apply it OUTSIDE the cache
+        // — otherwise a rename never shows until the rollout file happens to be rewritten.
+        guard var s = cache.value(path: url.path, stamp: mtime.timeIntervalSince1970 * 1_000_000,
+                                  compute: { parseUncached(url, mtime: mtime) }) else { return nil }
+        s.title = titles[s.id]
+        return s
     }
 
-    static func parseUncached(_ url: URL, mtime: Date, titles: [String: String]) -> CodexSession? {
+    static func parseUncached(_ url: URL, mtime: Date) -> CodexSession? {
         guard let first = JSONLReader.firstObject(url),
               first["type"] as? String == "session_meta",
               let p = first["payload"] as? [String: Any],
@@ -70,7 +75,7 @@ public enum CodexSessionCollector {
         }
         return CodexSession(id: id, cwd: cwd, branch: git?["branch"] as? String,
                             originator: p["originator"] as? String,
-                            model: model, effort: effort, title: titles[id], mtime: mtime, url: url,
+                            model: model, effort: effort, title: nil, mtime: mtime, url: url,
                             threadSource: p["thread_source"] as? String)
     }
 

@@ -22,7 +22,14 @@ public final class FileCache<Value>: @unchecked Sendable {
         if let entry = store[path], entry.stamp == stamp { lock.unlock(); return entry.value }
         lock.unlock()
         guard let computed = compute() else { return nil }
-        lock.lock(); store[path] = (stamp, computed); lock.unlock()
+        lock.lock()
+        // Don't overwrite a value another thread wrote with a newer stamp while we were computing.
+        if (store[path]?.stamp ?? -.infinity) <= stamp {
+            store[path] = (stamp, computed)
+            // Bound memory over the app's (indefinite) lifetime — drop a chunk when it gets large.
+            if store.count > 4000 { for k in Array(store.keys.prefix(2000)) { store.removeValue(forKey: k) } }
+        }
+        lock.unlock()
         return computed
     }
 }

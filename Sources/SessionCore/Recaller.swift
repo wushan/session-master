@@ -133,6 +133,13 @@ public enum Recaller {
             let base = (c as NSString).lastPathComponent
             if base.count > 4 { keys.append(base) }   // gate short/common basenames
         }
+        // Exact title match first (most precise — avoids grabbing the wrong window when a key is a
+        // substring of several titles), then fall back to substring matching.
+        for key in keys {
+            if let hit = windows.first(where: { $0.1.localizedCaseInsensitiveCompare(key) == .orderedSame }) {
+                return hit
+            }
+        }
         for key in keys {
             if let hit = windows.first(where: { $0.1.localizedCaseInsensitiveContains(key) }) {
                 return hit

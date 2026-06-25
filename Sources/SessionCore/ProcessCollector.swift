@@ -108,7 +108,8 @@ public enum ProcessCollector {
             guard let rec = byPID[current] else { break }
             let comm = rec.comm.lowercased()
             if comm.hasPrefix("tmux") { viaTmux = true }
-            for t in knownTerminals where comm.contains(t.needle) {
+            for t in knownTerminals where comm.contains(t.needle)
+                && !(t.needle == "code" && comm.contains("xcode")) {   // "xcode" contains "code"
                 return (TerminalHit(name: t.name, bundleID: t.bundleID, pid: rec.pid), viaTmux)
             }
             current = rec.ppid

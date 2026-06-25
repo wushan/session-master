@@ -37,9 +37,18 @@ public enum GitStatusCollector {
 
     public static func status(dir: String) -> GitStatus? {
         guard let gd = gitdir(dir) else { return nil }
-        let stamp = fileStamp(URL(fileURLWithPath: gd + "/HEAD"))
-            + fileStamp(URL(fileURLWithPath: gd + "/index")) * 1e-6
+        // Recompute on HEAD/index/FETCH_HEAD change, and at least every ~90s — so remote-ref changes
+        // (a fetch, an upstream pruned, a PR merged) that don't touch HEAD/index still refresh the
+        // ahead/behind/gone state instead of showing stale tracking info indefinitely.
+        let bucket = (Date().timeIntervalSince1970 / 90).rounded(.down) * 90
+        let stamp = mtime(gd + "/HEAD") + mtime(gd + "/index") * 1e-3
+            + mtime(gd + "/FETCH_HEAD") * 1e-4 + bucket
         return cache.value(path: dir, stamp: stamp) { compute(dir) }
+    }
+
+    static func mtime(_ path: String) -> Double {
+        (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate?.timeIntervalSince1970 ?? 0
     }
 
     static func compute(_ dir: String) -> GitStatus? {
