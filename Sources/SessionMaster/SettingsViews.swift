@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UserNotifications
 import SessionCore
 
 // MARK: - Config
@@ -138,12 +137,25 @@ enum Updater {
         return false
     }
 
+    /// Run the upgrade in a visible Terminal window (a temp `.command`) so you can see brew's
+    /// progress and any errors — with `brew update` first so the tap is fresh. Non-blocking; opens
+    /// the Releases page as a fallback if the script can't be written.
     static func brewUpgrade() {
-        Shell.run("/bin/sh", ["-lc", "brew upgrade --cask wushan/tab/session-master"])
-        let c = UNMutableNotificationContent()
-        c.title = "SessionMaster updated"; c.body = "Quit and reopen to run the new version."
-        UNUserNotificationCenter.current().add(
-            UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+        let script = """
+        #!/bin/bash
+        echo "Updating SessionMaster via Homebrew…"; echo
+        if brew update && brew upgrade --cask wushan/tap/session-master; then
+          echo; echo "✅ Done — quit and reopen SessionMaster to run the new version."
+        else
+          echo; echo "❌ Update failed (see above) — or download the .dmg from Releases."
+        fi
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("update-sessionmaster.command")
+        guard (try? script.write(to: url, atomically: true, encoding: .utf8)) != nil else {
+            openReleases(); return
+        }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        NSWorkspace.shared.open(url)
     }
 
     static func openReleases() {

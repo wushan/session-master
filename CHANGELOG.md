@@ -2,6 +2,16 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.4] — 2026-06-25
+
+### Fixed
+- **"Update via Homebrew" did nothing.** Three bugs: the cask name had a typo
+  (`wushan/tab/...` → `wushan/tap/...`), it never ran `brew update` first (so a stale tap couldn't
+  see the new version), and it ran brew synchronously on the main thread with no visible output.
+  It now opens a Terminal window running `brew update && brew upgrade --cask wushan/tap/session-master`
+  so you can watch progress and see any errors. (Updating *from* a build older than 0.2.4 still
+  needs that command run once by hand, since the broken button can't fix itself.)
+
 ## [0.2.3] — 2026-06-25
 
 ### Added
