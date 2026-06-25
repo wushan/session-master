@@ -3,6 +3,14 @@ import SessionCore
 
 enum DashboardTab: String, CaseIterable {
     case sessions = "Sessions", automations = "Automations", config = "Config", about = "About"
+    var icon: String {
+        switch self {
+        case .sessions:    return "list.bullet.rectangle"
+        case .automations: return "clock.arrow.2.circlepath"
+        case .config:      return "gearshape"
+        case .about:       return "info.circle"
+        }
+    }
 }
 
 struct MainWindowView: View {
@@ -19,45 +27,45 @@ struct MainWindowView: View {
     private let perProjectLimit = 5
 
     var body: some View {
-        VStack(spacing: 0) {
-            toolbar
-            Divider()
-            if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
-            switch store.selectedTab {
-            case .sessions:    sessionsList
-            case .automations: automationsList
-            case .config:      ConfigView(store: store)
-            case .about:       AboutView()
+        NavigationSplitView {
+            List(DashboardTab.allCases, id: \.self, selection: Binding(
+                get: { store.selectedTab }, set: { if let v = $0 { store.selectedTab = v } })) { tab in
+                Label(tab.rawValue, systemImage: tab.icon).tag(tab)
+            }
+            .navigationSplitViewColumnWidth(min: 150, ideal: 168, max: 220)
+        } detail: {
+            VStack(spacing: 0) {
+                if store.selectedTab == .sessions { sessionControls; Divider() }
+                if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
+                switch store.selectedTab {
+                case .sessions:    sessionsList
+                case .automations: automationsList
+                case .config:      ConfigView(store: store)
+                case .about:       AboutView()
+                }
             }
         }
-        .frame(minWidth: 560, minHeight: 420)
+        .frame(minWidth: 720, minHeight: 460)
         .background(.background)
     }
 
-    // MARK: Toolbar
+    // MARK: Session controls (filter / sort / search — the tabs live in the sidebar now)
 
-    private var toolbar: some View {
+    private var sessionControls: some View {
         HStack(spacing: 12) {
-            Picker("", selection: $store.selectedTab) {
-                ForEach(DashboardTab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            Picker("", selection: $sourceFilter) {
+                ForEach(SourceFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented).fixedSize()
-
-            if store.selectedTab == .sessions {
-                Picker("", selection: $sourceFilter) {
-                    ForEach(SourceFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).fixedSize()
-                Picker("", selection: $sortMode) {
-                    ForEach(SortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).fixedSize().help("Sort order")
-            }
+            Picker("", selection: $sortMode) {
+                ForEach(SortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented).fixedSize().help("Sort order")
             Spacer()
             HStack(spacing: 4) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
-                TextField("Filter", text: $search).textFieldStyle(.plain).frame(width: 140)
+                TextField("Filter", text: $search).textFieldStyle(.plain).frame(width: 160)
             }
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Color.primary.opacity(0.06)).clipShape(Capsule())
-
             Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).help("Refresh now").pointerCursor()
         }.padding(10)
