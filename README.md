@@ -39,8 +39,9 @@ puts it in one place, with one-click recall.
 - **Timeline list** — last-activity time on a left axis; a **halo ring** marks sessions that are
   actively working, and sessions idle >48h fade to grayscale so the live ones stand out.
 - **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list.
-- **Parent → child hierarchy**: a Claude session and the Codex companion / sub-agents it
-  spawned are nested under it (collapsible).
+- **Parent → child hierarchy**: a Claude session and the Codex companion / sub-agents it spawned
+  nest under it — **collapsed by default** with a count, and shown as compact read-only lines when
+  expanded (sub-agents can't be recalled or acted on).
 - **One-click Recall** (click the row): focuses the exact terminal window that owns a session, on
   whichever monitor it's on. If it's on another virtual desktop (Space), modern macOS blocks every
   programmatic Space switch, so SessionMaster fans that terminal's windows out with **App Exposé** —

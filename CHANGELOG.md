@@ -2,6 +2,34 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.3] — 2026-06-25
+
+### Added
+- **Recall across virtual desktops (Spaces)**: when a session's terminal is on another desktop,
+  SessionMaster fans that app's windows out with **App Exposé** — click the one you want and macOS
+  switches to its desktop natively. (Modern macOS locks down every private Space/window-move SPI,
+  so this is the only reliable, no-SIP path.) Visible windows are still raised + focused directly,
+  even when buried behind other windows.
+- **Routine / automation badges**: Claude routine sessions show a teal **routine** badge and Codex
+  automation runs an **auto** badge (clock glyph), so machine-started sessions are obvious.
+- **Sub-agent count** chip on a parent session, and a **three concentric-rings** menu-bar icon.
+- The dashboard gets a **Dock icon while it's open**, so you can minimize it like a normal window;
+  it drops back to menu-bar-only when closed.
+
+### Changed
+- **Sub-agents / Codex companions collapse by default** and, when expanded, render as a single dim,
+  non-interactive line nested to the right of the parent (they can't be recalled or acted on).
+- Dashboard tabs moved to a **sidebar**; the session list defaults to **Recent** sort.
+- Menu-bar popover: footer reordered (⚡ launch-at-login + ⚙️ settings on the left, **Dashboard** on
+  the right), row actions moved to a **hover overlay** so titles/paths use the full width, and the
+  popover **closes itself** when you open the dashboard.
+- Removed the **pin-to-floating-window** feature — the now-dockable dashboard window replaces it.
+- The "actively working" indicator is a **static halo ring** instead of a pulsing dot.
+
+### Fixed
+- Menu-bar popover **flicker/slide** on open (caused by a repeatForever pulse animation).
+- The **About** page now shows the real app icon instead of an SF Symbol.
+
 ## [0.2.2] — 2026-06-25
 
 ### Added
