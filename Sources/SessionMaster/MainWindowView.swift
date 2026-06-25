@@ -20,7 +20,7 @@ struct MainWindowView: View {
     enum SortMode: String, CaseIterable { case project = "Project", recent = "Recent" }
 
     @State private var sourceFilter: SourceFilter = .all
-    @State private var sortMode: SortMode = .project
+    @State private var sortMode: SortMode = .recent
     @State private var search = ""
     @State private var collapsed: Set<String> = []
     @State private var expandedProjects: Set<String> = []
