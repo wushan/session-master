@@ -133,8 +133,10 @@ final class SessionStore {
 
     private func describe(_ o: RecallOutcome, for s: UnifiedSession) -> String {
         switch o {
-        case .raisedWindow(let t, let other):
-            return "Focused “\(t)”" + (other ? " — on your other display ↗︎" : "")
+        case .raisedWindow(let t, let other, let otherSpace):
+            let note = otherSpace ? " — pulled from another desktop ↗︎"
+                     : (other ? " — on your other display ↗︎" : "")
+            return "Focused “\(t)”" + note
         case .appleScriptSwitched:    return "Switched to \(s.terminal.terminalApp ?? "terminal")"
         case .tmuxSwitched(let t):    return "tmux → \(t)"
         case .foregroundedApp(let n): return "Brought \(n) to front"

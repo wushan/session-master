@@ -29,7 +29,7 @@ public struct RecallTarget: Sendable {
 }
 
 public enum RecallOutcome: Sendable {
-    case raisedWindow(title: String, otherDisplay: Bool)  // matched & raised a specific window
+    case raisedWindow(title: String, otherDisplay: Bool, fromOtherSpace: Bool)  // matched & raised a window
     case appleScriptSwitched         // iTerm2/Terminal switched to the tab by tty
     case tmuxSwitched(String)        // tmux selected the pane (target)
     case foregroundedApp(String)     // best-effort: brought the app forward, no precise window
@@ -79,13 +79,19 @@ public enum Recaller {
         if let tp = a.terminalPID {
             guard accessibilityTrusted() else { return .needsAccessibility }
             if let (window, title) = matchWindow(appPID: tp, titleHint: a.windowTitleHint, cwd: a.cwd) {
+                // If the window lives on another virtual desktop (Space), pull it onto the one the
+                // cursor is on — AXRaise alone won't cross Spaces. Then settle its display.
+                let otherDisplay = isOnOtherDisplay(window)
+                let uuid = cursorScreen().flatMap { Spaces.displayUUID(of: $0) }
+                let fromOtherSpace = Spaces.pullToCurrentSpace(window, displayUUID: uuid)
                 bringToCurrentScreen(window)
                 AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
                 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                 AXUIElementSetAttributeValue(AXUIElementCreateApplication(tp),
                                              kAXFrontmostAttribute as CFString, kCFBooleanTrue)
                 NSRunningApplication(processIdentifier: tp)?.activate()
-                return .raisedWindow(title: title, otherDisplay: isOnOtherDisplay(window))
+                return .raisedWindow(title: title, otherDisplay: otherDisplay,
+                                     fromOtherSpace: fromOtherSpace)
             }
             // Fallback: bring the terminal app forward (can't target the exact window).
             NSRunningApplication(processIdentifier: tp)?.activate()
@@ -120,12 +126,10 @@ public enum Recaller {
         return nil
     }
 
-    /// If the window is on a different display than the user's cursor, move it onto the
-    /// current display so a recalled session doesn't stay hidden on another monitor.
-    /// (Cross-Space moves aren't possible via Accessibility; macOS handles those on raise.)
     /// Pull the window onto the display the user's cursor is on (multi-monitor). AX position
-    /// moves do work across displays here, so this runs whenever the window is elsewhere.
-    /// Single-display setups never trigger it (the window is already on the only screen).
+    /// moves work across displays, so this runs whenever the window is on another screen.
+    /// Single-display setups never trigger it. (Cross-*Space* moves are handled separately by
+    /// `Spaces.pullToCurrentSpace`, since Accessibility can't cross virtual desktops.)
     static func bringToCurrentScreen(_ window: AXUIElement) {
         guard NSScreen.screens.count > 1 else { return }
         guard let current = cursorScreen(), let pos = axPosition(window) else { return }
