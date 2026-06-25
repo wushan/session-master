@@ -59,7 +59,7 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(systemName: "square.grid.2x2.fill").font(.system(size: 44)).foregroundStyle(.tint)
+            appIcon
             Text("SessionMaster").font(.title.bold())
             Text("Version \(Updater.currentVersion)").foregroundStyle(.secondary)
 
@@ -102,6 +102,13 @@ struct AboutView: View {
         checking = true
         latest = await Updater.latest()
         checking = false
+    }
+
+    @ViewBuilder private var appIcon: some View {
+        let img = Bundle.main.url(forResource: "AppIcon", withExtension: "icns").flatMap(NSImage.init(contentsOf:))
+            ?? NSApp.applicationIconImage
+        if let img { Image(nsImage: img).resizable().frame(width: 76, height: 76) }
+        else { Image(systemName: "circle.circle").font(.system(size: 44)).foregroundStyle(.tint) }
     }
 }
 

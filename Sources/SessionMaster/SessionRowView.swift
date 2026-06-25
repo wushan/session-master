@@ -201,7 +201,8 @@ struct SessionRowView: View {
             }
         }
         .padding(.horizontal, 3).padding(.vertical, 1)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7))
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.92),
+                    in: RoundedRectangle(cornerRadius: 7))
     }
 
     private func prettyPath(_ p: String) -> String {
