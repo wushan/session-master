@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SessionCore
 
 enum DashboardTab: String, CaseIterable {
@@ -47,6 +48,11 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 720, minHeight: 460)
         .background(.background)
+        // Menu-bar apps (.accessory) have no Dock tile, so a minimized window vanishes with no
+        // way back. While the dashboard is open, become a regular app so it gets a Dock icon and
+        // minimize works; drop back to menu-bar-only when the window closes.
+        .onAppear { NSApp.setActivationPolicy(.regular) }
+        .onDisappear { NSApp.setActivationPolicy(.accessory) }
     }
 
     // MARK: Session controls (filter / sort / search — the tabs live in the sidebar now)
