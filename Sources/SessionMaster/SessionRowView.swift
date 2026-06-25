@@ -36,7 +36,8 @@ struct SessionRowView: View {
                             Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.tertiary)
                         }
                         sourceBadge
-                        if session.isAutomationRun { autoBadge }
+                        if session.isAutomationRun { scheduleBadge("auto", .secondary) }
+                        else if session.isRoutineRun { scheduleBadge("routine", .teal) }
                         prChip
                     }
                 }
@@ -144,11 +145,16 @@ struct SessionRowView: View {
         }
     }
 
-    private var autoBadge: some View {
-        Text("auto").font(.system(size: 9, weight: .bold))
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(Color.secondary.opacity(0.18)).foregroundStyle(.secondary)
-            .clipShape(Capsule())
+    /// Marks a session that a schedule started rather than a person — a Codex automation ("auto")
+    /// or a Claude routine ("routine"). Same clock glyph as the Automations tab.
+    private func scheduleBadge(_ text: String, _ color: Color) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "clock.arrow.2.circlepath").font(.system(size: 8))
+            Text(text).font(.system(size: 9, weight: .bold))
+        }
+        .padding(.horizontal, 5).padding(.vertical, 1)
+        .background(color.opacity(0.18)).foregroundStyle(color)
+        .clipShape(Capsule())
     }
 
     private var metaLine: some View {

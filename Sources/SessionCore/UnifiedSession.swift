@@ -55,6 +55,10 @@ public struct UnifiedSession: Identifiable, Sendable {
     public let terminal: TerminalInfo
     public let updatedAt: Date?
     public let isAutomationRun: Bool     // a Codex automation execution (vs a manual session)
+    public let scheduledTaskId: String?  // set when a Claude routine (scheduled task) spawned this
+
+    /// This session was started by a Claude routine, not a person.
+    public var isRoutineRun: Bool { scheduledTaskId != nil }
 
     /// Optional enrichment (git state, PR, last prompt, context%) — filled by the aggregator.
     public var rich = SessionRich()
@@ -62,12 +66,13 @@ public struct UnifiedSession: Identifiable, Sendable {
     public init(id: String, source: Source, pid: pid_t?, cwd: String, name: String?, title: String?,
                 model: String?, effort: String?, branch: String?, worktreeName: String?,
                 originator: String?, status: Status, waitingFor: String?,
-                terminal: TerminalInfo, updatedAt: Date?, isAutomationRun: Bool = false) {
+                terminal: TerminalInfo, updatedAt: Date?, isAutomationRun: Bool = false,
+                scheduledTaskId: String? = nil) {
         self.id = id; self.source = source; self.pid = pid; self.cwd = cwd; self.name = name
         self.title = title; self.model = model; self.effort = effort; self.branch = branch
         self.worktreeName = worktreeName; self.originator = originator; self.status = status
         self.waitingFor = waitingFor; self.terminal = terminal; self.updatedAt = updatedAt
-        self.isAutomationRun = isAutomationRun
+        self.isAutomationRun = isAutomationRun; self.scheduledTaskId = scheduledTaskId
     }
 
     /// Project name, stripping the worktree suffix so sessions group by repo.
@@ -159,7 +164,7 @@ public enum SessionAggregator {
                 id: cli, source: .claudeDesktop, pid: nil, cwd: cwd, name: nil, title: d.title,
                 model: d.model, effort: d.effort, branch: d.branch, worktreeName: d.worktreeName,
                 originator: nil, status: .idle, waitingFor: nil, terminal: .dead,
-                updatedAt: d.lastActivityAt)
+                updatedAt: d.lastActivityAt, scheduledTaskId: d.scheduledTaskId)
         }
     }
 
@@ -180,10 +185,12 @@ public enum SessionAggregator {
             let t = terms[s.pid] ?? .dead
             let isCLI = t.terminalApp != nil
             var model: String?, effort: String?, branch: String?, title: String?, worktree: String?
+            var scheduledTaskId: String?
 
             if let d = desktop[s.sessionId] {          // Desktop session metadata
                 model = d.model; effort = d.effort; title = d.title
                 branch = d.branch; worktree = d.worktreeName
+                scheduledTaskId = d.scheduledTaskId
             }
             let h = ClaudeHistoryEnricher.enrich(sessionId: s.sessionId, cwd: s.cwd)
             model = model ?? h?.model; branch = branch ?? h?.branch
@@ -194,7 +201,8 @@ public enum SessionAggregator {
                 model: model, effort: effort, branch: branch, worktreeName: worktree,
                 originator: nil,
                 status: UnifiedSession.Status(rawValue: s.status) ?? .unknown,
-                waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt)
+                waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt,
+                scheduledTaskId: scheduledTaskId)
             u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
             u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
             u.rich.contextPercent = h?.contextPercent
