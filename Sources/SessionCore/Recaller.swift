@@ -79,19 +79,19 @@ public enum Recaller {
         if let tp = a.terminalPID {
             guard accessibilityTrusted() else { return .needsAccessibility }
             if let (window, title) = matchWindow(appPID: tp, titleHint: a.windowTitleHint, cwd: a.cwd) {
-                // If the window lives on another virtual desktop (Space), pull it onto the one the
-                // cursor is on — AXRaise alone won't cross Spaces. Then settle its display.
+                // If the window lives on another virtual desktop (Space), switch to that desktop —
+                // AXRaise alone won't cross Spaces. Only if it's already on the current Space do we
+                // pull it across displays instead.
                 let otherDisplay = isOnOtherDisplay(window)
-                let uuid = cursorScreen().flatMap { Spaces.displayUUID(of: $0) }
-                let fromOtherSpace = Spaces.pullToCurrentSpace(window, displayUUID: uuid)
-                bringToCurrentScreen(window)
+                let switchedSpace = Spaces.switchToWindowSpace(window)
+                if !switchedSpace { bringToCurrentScreen(window) }
                 AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
                 AXUIElementPerformAction(window, kAXRaiseAction as CFString)
                 AXUIElementSetAttributeValue(AXUIElementCreateApplication(tp),
                                              kAXFrontmostAttribute as CFString, kCFBooleanTrue)
                 NSRunningApplication(processIdentifier: tp)?.activate()
-                return .raisedWindow(title: title, otherDisplay: otherDisplay,
-                                     fromOtherSpace: fromOtherSpace)
+                return .raisedWindow(title: title, otherDisplay: otherDisplay && !switchedSpace,
+                                     fromOtherSpace: switchedSpace)
             }
             // Fallback: bring the terminal app forward (can't target the exact window).
             NSRunningApplication(processIdentifier: tp)?.activate()

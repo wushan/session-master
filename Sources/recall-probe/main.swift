@@ -58,7 +58,7 @@ case "recall":
     print("Recalling pid \(pid) in \(t.terminalApp ?? "?") tty \(t.tty ?? "?") name \"\(s.name ?? "")\"")
     switch Recaller.recall(RecallTarget(cwd: s.cwd, windowTitleHint: s.name, terminal: t)) {
     case .raisedWindow(let x, let other, let otherSpace):
-        let note = otherSpace ? " (pulled from another desktop)" : (other ? " (on other display)" : "")
+        let note = otherSpace ? " (switched to its desktop)" : (other ? " (on other display)" : "")
         print("✅ raised window: \"\(x)\"\(note)")
     case .appleScriptSwitched:    print("✅ switched tab via AppleScript")
     case .tmuxSwitched(let x):    print("✅ tmux selected pane: \(x)")
