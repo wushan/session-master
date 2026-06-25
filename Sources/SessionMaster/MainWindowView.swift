@@ -30,15 +30,18 @@ struct MainWindowView: View {
     private let perProjectLimit = 5
 
     var body: some View {
-        NavigationSplitView {
+        // A fixed-width native sidebar List instead of NavigationSplitView — its collapsible sidebar
+        // gets stuck half-overlaid when toggled on macOS. Same look, no collapse glitch.
+        HStack(spacing: 0) {
             List(DashboardTab.allCases, id: \.self, selection: Binding(
                 get: { store.selectedTab }, set: { if let v = $0 { store.selectedTab = v } })) { tab in
                 Label(tab.rawValue, systemImage: tab.icon)
                     .badge(tab == .about && store.availableUpdate != nil ? "Update" : nil)
                     .tag(tab)
             }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 168, max: 220)
-        } detail: {
+            .listStyle(.sidebar)
+            .frame(width: 180)
+            Divider()
             VStack(spacing: 0) {
                 if store.selectedTab == .sessions { sessionControls; Divider() }
                 if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
@@ -49,6 +52,7 @@ struct MainWindowView: View {
                 case .about:       AboutView()
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 720, minHeight: 460)
         .background(.background)
