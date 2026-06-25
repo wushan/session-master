@@ -143,12 +143,15 @@ public struct UnifiedSession: Identifiable, Sendable {
         return false
     }
 
-    /// The command that resumes this session (run in its cwd by a new terminal).
+    /// The command that resumes this session, run in its cwd by a new terminal. Uses each tool's
+    /// interactive resume *picker* (scoped to this project by the cwd) rather than the by-id launch
+    /// flag — the flag replays the whole conversation at startup, which crashes Claude's renderer on
+    /// a session containing a malformed historical diff; the picker resumes without that replay.
     public var resumeCommand: String? {
         guard canResume else { return nil }
         switch source {
-        case .claudeCLI, .claudeDesktop: return "claude --resume \(id)"
-        case .codexCLI, .codexDesktop:   return "codex resume \(id)"
+        case .claudeCLI, .claudeDesktop: return "claude --resume"
+        case .codexCLI, .codexDesktop:   return "codex resume"
         }
     }
 }
