@@ -2,6 +2,13 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.7] — 2026-06-25
+
+### Notes
+- First release where the self-update UX added in 0.2.6 is visible end-to-end: a 0.2.6 install now
+  surfaces the **update pill** in the popover and, on clicking *Update via Homebrew*, upgrades and
+  **relaunches automatically** — no manual quit/reopen.
+
 ## [0.2.6] — 2026-06-25
 
 ### Added
