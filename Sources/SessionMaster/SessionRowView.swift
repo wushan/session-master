@@ -5,6 +5,7 @@ import SessionCore
 struct SessionRowView: View {
     let session: UnifiedSession
     var isChild = false
+    var subagentCount = 0
     let onRecall: () -> Void
     let onVSCode: () -> Void
     var onReveal: (() -> Void)? = nil
@@ -38,6 +39,7 @@ struct SessionRowView: View {
                         sourceBadge
                         if session.isAutomationRun { scheduleBadge("auto", .secondary) }
                         else if session.isRoutineRun { scheduleBadge("routine", .teal) }
+                        if subagentCount > 0 { subagentChip }
                         prChip
                     }
                 }
@@ -154,6 +156,18 @@ struct SessionRowView: View {
         }
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(color.opacity(0.18)).foregroundStyle(color)
+        .clipShape(Capsule())
+    }
+
+    /// How many Codex companions / sub-agents this session spawned (children collapse by default,
+    /// so this is the at-a-glance count).
+    private var subagentChip: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "person.2.fill").font(.system(size: 8))
+            Text("\(subagentCount)").font(.system(size: 9, weight: .bold))
+        }
+        .padding(.horizontal, 5).padding(.vertical, 1)
+        .background(Color.secondary.opacity(0.18)).foregroundStyle(.secondary)
         .clipShape(Capsule())
     }
 

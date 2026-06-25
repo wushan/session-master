@@ -23,7 +23,7 @@ struct MainWindowView: View {
     @State private var sourceFilter: SourceFilter = .all
     @State private var sortMode: SortMode = .recent
     @State private var search = ""
-    @State private var collapsed: Set<String> = []
+    @State private var expandedNodes: Set<String> = []
     @State private var expandedProjects: Set<String> = []
     private let perProjectLimit = 5
 
@@ -121,7 +121,7 @@ struct MainWindowView: View {
             emptyState("No matching sessions")
         } else if sortMode == .recent {
             List(recentNodes) { node in
-                SessionNodeView(node: node, collapsed: $collapsed, store: store)
+                SessionNodeView(node: node, expanded: $expandedNodes, store: store)
                     .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
             }.listStyle(.inset)
         } else {
@@ -131,7 +131,7 @@ struct MainWindowView: View {
                     let shown = expanded ? group.nodes : Array(group.nodes.prefix(perProjectLimit))
                     Section {
                         ForEach(shown) { node in
-                            SessionNodeView(node: node, collapsed: $collapsed, store: store)
+                            SessionNodeView(node: node, expanded: $expandedNodes, store: store)
                                 .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
                         }
                         if group.nodes.count > perProjectLimit {
