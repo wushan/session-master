@@ -41,10 +41,11 @@ puts it in one place, with one-click recall.
 - **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list.
 - **Parent → child hierarchy**: a Claude session and the Codex companion / sub-agents it
   spawned are nested under it (collapsible).
-- **One-click Recall** (click the row): raises the exact terminal window that owns a session. If
-  it's on another monitor it's pulled to the one you're looking at; if it's on another virtual
-  desktop (Space) it switches you to that desktop. Codex Desktop sessions recall via the
-  `codex://threads/<id>` deep link straight to the conversation.
+- **One-click Recall** (click the row): focuses the exact terminal window that owns a session, on
+  whichever monitor it's on. If it's on another virtual desktop (Space), modern macOS blocks every
+  programmatic Space switch, so SessionMaster fans that terminal's windows out with **App Exposé** —
+  click the one you want and macOS switches to its desktop natively. Codex Desktop sessions recall
+  via the `codex://threads/<id>` deep link straight to the conversation.
 - **Open in your editor / Reveal in Finder** — pointed at the session's *real worktree*, not
   the repo root. Editor is configurable (VS Code / Cursor / Zed / Sublime / Xcode / custom).
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.

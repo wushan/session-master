@@ -33,6 +33,7 @@ public enum RecallOutcome: Sendable {
     case appleScriptSwitched         // iTerm2/Terminal switched to the tab by tty
     case tmuxSwitched(String)        // tmux selected the pane (target)
     case foregroundedApp(String)     // best-effort: brought the app forward, no precise window
+    case exposedWindows(String)      // fanned the app's windows out with App Exposé — user clicks one
     case needsAccessibility          // AX not granted; cannot raise specific window
     case notFound
     case failed(String)
@@ -78,26 +79,38 @@ public enum Recaller {
         // Generic / no-IPC terminals (Ghostty, WezTerm, kitty, …): use Accessibility.
         if let tp = a.terminalPID {
             guard accessibilityTrusted() else { return .needsAccessibility }
+            // Windows the Accessibility API can see are those on a currently-shown Space. Match by
+            // title and focus it in place (SkyLight per-window focus brings its display forward).
             if let (window, title) = matchWindow(appPID: tp, titleHint: a.windowTitleHint, cwd: a.cwd) {
-                // If the window lives on another virtual desktop (Space), switch to that desktop —
-                // AXRaise alone won't cross Spaces. Only if it's already on the current Space do we
-                // pull it across displays instead.
-                let otherDisplay = isOnOtherDisplay(window)
-                let switchedSpace = Spaces.switchToWindowSpace(window)
-                if !switchedSpace { bringToCurrentScreen(window) }
-                AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-                AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-                AXUIElementSetAttributeValue(AXUIElementCreateApplication(tp),
-                                             kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-                NSRunningApplication(processIdentifier: tp)?.activate()
-                return .raisedWindow(title: title, otherDisplay: otherDisplay && !switchedSpace,
-                                     fromOtherSpace: switchedSpace)
+                focusWindow(window, appPID: tp)
+                return .raisedWindow(title: title, otherDisplay: false, fromOtherSpace: false)
             }
-            // Fallback: bring the terminal app forward (can't target the exact window).
+            // Not on any visible Space — AX can't see it (Ghostty only exposes its focused window),
+            // and modern macOS has locked down every private Space/window-move SPI. Use the native
+            // path: activate the terminal and fan its windows out with App Exposé so the user clicks
+            // the one to recall — macOS then switches to its desktop cleanly.
+            if !Spaces.hiddenWindowIDs(ofPID: tp).isEmpty {
+                NSRunningApplication(processIdentifier: tp)?.activate()
+                usleep(120_000)   // let the app come forward before App Exposé
+                if Spaces.appExpose(), let name = a.terminalApp { return .exposedWindows(name) }
+            }
             NSRunningApplication(processIdentifier: tp)?.activate()
+            // Last resort: just brought the terminal app forward (can't target the exact window).
             if let name = a.terminalApp { return .foregroundedApp(name) }
         }
         return .notFound
+    }
+
+    /// Focus a specific window and bring its app forward. Prefers the SkyLight per-window focus
+    /// (clean across Spaces — no app-activate that would drag the window or revert a Space switch);
+    /// falls back to plain AX raise + app activate if that SPI is unavailable.
+    static func focusWindow(_ window: AXUIElement, appPID tp: pid_t) {
+        if let wid = Spaces.windowID(of: window), Spaces.focusWindowID(wid, pid: tp) { return }
+        AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        AXUIElementSetAttributeValue(AXUIElementCreateApplication(tp),
+                                     kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        NSRunningApplication(processIdentifier: tp)?.activate()
     }
 
     // MARK: - Accessibility window raising
@@ -124,55 +137,6 @@ public enum Recaller {
             }
         }
         return nil
-    }
-
-    /// Pull the window onto the display the user's cursor is on (multi-monitor). AX position
-    /// moves work across displays, so this runs whenever the window is on another screen.
-    /// Single-display setups never trigger it. (Cross-*Space* moves are handled separately by
-    /// `Spaces.pullToCurrentSpace`, since Accessibility can't cross virtual desktops.)
-    static func bringToCurrentScreen(_ window: AXUIElement) {
-        guard NSScreen.screens.count > 1 else { return }
-        guard let current = cursorScreen(), let pos = axPosition(window) else { return }
-        if screenOf(quartzTopLeft: pos)?.frame == current.frame { return }   // already on current
-        let primaryMaxY = NSScreen.screens[0].frame.maxY
-        let inset: CGFloat = 80
-        setAXPosition(window, CGPoint(x: current.frame.minX + inset,
-                                      y: primaryMaxY - current.frame.maxY + inset))
-    }
-
-    static func cursorScreen() -> NSScreen? {
-        let m = NSEvent.mouseLocation
-        return NSScreen.screens.first { $0.frame.contains(m) } ?? NSScreen.main
-    }
-
-    /// The screen a window sits on, tested from a point 20px INSIDE its top-left so a window
-    /// flush against a display boundary isn't mis-attributed to the neighbouring display.
-    static func screenOf(quartzTopLeft pos: CGPoint) -> NSScreen? {
-        let primaryMaxY = NSScreen.screens.first?.frame.maxY ?? 0
-        let interior = CGPoint(x: pos.x + 20, y: primaryMaxY - pos.y - 20)
-        return NSScreen.screens.first { $0.frame.contains(interior) }
-    }
-
-    /// True when the recalled window ended up on a different display than the user's cursor.
-    static func isOnOtherDisplay(_ window: AXUIElement) -> Bool {
-        guard NSScreen.screens.count > 1, let pos = axPosition(window),
-              let ws = screenOf(quartzTopLeft: pos), let cs = cursorScreen() else { return false }
-        return ws.frame != cs.frame
-    }
-
-    static func axPosition(_ w: AXUIElement) -> CGPoint? {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(w, kAXPositionAttribute as CFString, &ref) == .success,
-              let value = ref, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
-        var pt = CGPoint.zero
-        guard AXValueGetValue(value as! AXValue, .cgPoint, &pt) else { return nil }
-        return pt
-    }
-
-    static func setAXPosition(_ w: AXUIElement, _ p: CGPoint) {
-        var pt = p
-        guard let v = AXValueCreate(.cgPoint, &pt) else { return }
-        AXUIElementSetAttributeValue(w, kAXPositionAttribute as CFString, v)
     }
 
     /// All (window element, title) pairs for an app via Accessibility.

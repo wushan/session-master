@@ -63,6 +63,7 @@ case "recall":
     case .appleScriptSwitched:    print("✅ switched tab via AppleScript")
     case .tmuxSwitched(let x):    print("✅ tmux selected pane: \(x)")
     case .foregroundedApp(let n): print("⚠️  no precise window match — brought \(n) to front (fallback)")
+    case .exposedWindows(let n):  print("🪟  App Exposé for \(n) — click the window to recall")
     case .needsAccessibility:     print("❌ Accessibility not granted — run `recall-probe ax-check`")
     case .notFound:               print("❌ could not locate a window/terminal to recall")
     case .failed(let m):          print("❌ \(m)")

@@ -14,7 +14,6 @@ enum Spaces {
     // _AXUIElementGetWindow(AXUIElementRef, CGWindowID*) -> AXError   (HIServices private SPI)
     private typealias GetWindowFn     = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
     private typealias ConnFn          = @convention(c) () -> CGSConnectionID
-    private typealias SetSpaceFn      = @convention(c) (CGSConnectionID, CFString, CGSSpaceID) -> Void
     private typealias SpacesForWinFn  = @convention(c) (CGSConnectionID, Int, CFArray) -> Unmanaged<CFArray>?
     private typealias CopyDisplaysFn  = @convention(c) (CGSConnectionID) -> Unmanaged<CFArray>?
 
@@ -40,7 +39,6 @@ enum Spaces {
     // CGS… is the legacy prefix; SLS… is the SkyLight prefix kept as an alias. Try both.
     private static let getWindow     = sym(["_AXUIElementGetWindow"], as: GetWindowFn.self)
     private static let conn          = sym(["CGSMainConnectionID", "SLSMainConnectionID", "_CGSDefaultConnection"], as: ConnFn.self)
-    private static let setSpace      = sym(["CGSManagedDisplaySetCurrentSpace", "SLSManagedDisplaySetCurrentSpace"], as: SetSpaceFn.self)
     private static let spacesForWin  = sym(["CGSCopySpacesForWindows", "SLSCopySpacesForWindows"], as: SpacesForWinFn.self)
     private static let copyDisplays  = sym(["CGSCopyManagedDisplaySpaces", "SLSCopyManagedDisplaySpaces"], as: CopyDisplaysFn.self)
 
@@ -80,21 +78,74 @@ enum Spaces {
         return (owner, current)
     }
 
-    /// Switch the display that owns the window's Space to that Space, so a recalled terminal on
-    /// another virtual desktop comes into view. Returns true when it actually changed desktops.
-    @discardableResult
-    static func switchToWindowSpace(_ window: AXUIElement) -> Bool {
-        guard let conn, let setSpace, let wid = windowID(of: window) else { return false }
+
+    /// CGWindowIDs of *real* windows of `pid` that sit on a Space that isn't currently shown — i.e.
+    /// windows the Accessibility API can't see because they're on another desktop. (Ghostty only
+    /// exposes its focused window to AX, so CGWindowList is the only way to find the others.) Junk
+    /// layers / tiny shadow windows are filtered out.
+    static func hiddenWindowIDs(ofPID pid: pid_t) -> [CGWindowID] {
+        guard let conn else { return [] }
         let cid = conn()
-        let onSpaces = spaces(of: wid, cid)
-        guard !onSpaces.isEmpty else { return false }
-        let layout = displayLayout(cid)
-        // Prefer a Space that isn't already showing; ignore windows pinned to all Spaces.
-        guard let target = onSpaces.first(where: { sp in
-            guard let disp = layout.owner[sp] else { return false }
-            return layout.current[disp] != sp
-        }), let disp = layout.owner[target] else { return false }
-        setSpace(cid, disp as CFString, target)
+        let current = Set(displayLayout(cid).current.values)
+        guard let infos = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [[String: Any]]
+        else { return [] }
+        var out: [CGWindowID] = []
+        for w in infos {
+            guard (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+                  (w[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let num = (w[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let b = w[kCGWindowBounds as String] as? [String: CGFloat],
+                  (b["Height"] ?? 0) > 120, (b["Width"] ?? 0) > 200 else { continue }
+            guard let sp = spaces(of: num, cid).first, !current.contains(sp) else { continue }
+            out.append(num)
+        }
+        return out
+    }
+
+    // The PSN (ProcessSerialNumber, two UInt32s) is passed as an opaque 8-byte void* so the C
+    // function types stay representable.
+    private typealias GetPSNFn    = @convention(c) (pid_t, UnsafeMutableRawPointer) -> Int32
+    private typealias SetFrontFn  = @convention(c) (UnsafeMutableRawPointer, UInt32, UInt32) -> Int32
+    private typealias PostEvtFn   = @convention(c) (UnsafeMutableRawPointer, UnsafeMutableRawPointer) -> Int32
+    private static let getPSN    = sym(["GetProcessForPID"], as: GetPSNFn.self)
+    private static let setFront  = sym(["_SLPSSetFrontProcessWithOptions"], as: SetFrontFn.self)
+    private static let postEvent = sym(["SLPSPostEventRecordTo"], as: PostEvtFn.self)
+
+    private typealias DockFn = @convention(c) (CFString, Int32) -> Void
+    private static let coreDock = sym(["CoreDockSendNotification"], as: DockFn.self)
+
+    /// Trigger App Exposé for the *front* application (activate the target app first). This fans out
+    /// all of that app's windows across every desktop as thumbnails; when the user clicks one, macOS
+    /// natively brings it forward — the only reliable way to reach a window on another desktop on
+    /// modern macOS, where the private Space/window-move SPI is locked down.
+    @discardableResult
+    static func appExpose() -> Bool {
+        guard let coreDock else { return false }
+        coreDock("com.apple.expose.front.awake" as CFString, 0)
+        return true
+    }
+
+    /// Focus a specific window by its CGWindowID. This switches to the window's Space and makes it
+    /// key *without* a generic app-activate — which would otherwise drag the window to the active
+    /// Space or revert a Space switch. The synthetic-event sequence is the AltTab/Hammerspoon idiom.
+    @discardableResult
+    static func focusWindowID(_ wid: CGWindowID, pid: pid_t) -> Bool {
+        guard let getPSN, let setFront, let postEvent else { return false }
+        let psn = UnsafeMutableRawPointer.allocate(byteCount: 8, alignment: 4)
+        defer { psn.deallocate() }
+        psn.initializeMemory(as: UInt8.self, repeating: 0, count: 8)
+        guard getPSN(pid, psn) == 0 else { return false }
+        _ = setFront(psn, wid, 0x2 /* kCPSUserGenerated */)
+        var bytes = [UInt8](repeating: 0, count: 0xf8)
+        bytes[0x04] = 0xf8
+        bytes[0x3a] = 0x10
+        var w = wid
+        withUnsafeBytes(of: &w) { for i in 0..<4 { bytes[0x3c + i] = $0[i] } }
+        for i in 0..<0x10 { bytes[0x20 + i] = 0xff }
+        bytes[0x08] = 0x02
+        _ = bytes.withUnsafeMutableBufferPointer { postEvent(psn, $0.baseAddress!) }
+        bytes[0x08] = 0x01
+        _ = bytes.withUnsafeMutableBufferPointer { postEvent(psn, $0.baseAddress!) }
         return true
     }
 }

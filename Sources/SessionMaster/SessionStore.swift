@@ -140,6 +140,7 @@ final class SessionStore {
         case .appleScriptSwitched:    return "Switched to \(s.terminal.terminalApp ?? "terminal")"
         case .tmuxSwitched(let t):    return "tmux → \(t)"
         case .foregroundedApp(let n): return "Brought \(n) to front"
+        case .exposedWindows(let n):  return "Click your window in \(n)’s Exposé ↧"
         case .needsAccessibility:     return "Grant Accessibility to recall windows"
         case .notFound:               return "Couldn’t locate that window"
         case .failed(let m):          return m
