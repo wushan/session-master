@@ -48,8 +48,8 @@ puts it in one place, with one-click recall.
   the repo root. Editor is configurable (VS Code / Cursor / Zed / Sublime / Xcode / custom).
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.
 - **Dashboard** with Project / Recent sort, source filter, and search; **Config** and **About**
-  (version + one-click *Update via Homebrew*) tabs.
-- **Pin to a floating window** that stays on top and doesn't dismiss when you click away.
+  (version + one-click *Update via Homebrew*) tabs. Open it and a Dock icon appears so you can
+  minimize it like any window; close it and the app drops back to menu-bar only.
 - **Launch at login**, menu-bar only — with a **configurable menu-bar icon**.
 
 <p align="center">
@@ -147,13 +147,13 @@ Claude session name against the terminal's window title via the **Accessibility 
 ```
 SessionCore (library)                 SessionMaster (menu-bar app)
   Collectors  ClaudeLiveCollector       SessionStore      @Observable, 2s poll, off-main
-              ClaudeHistoryEnricher      MenuContentView   menu-bar popover (+ pin)
+              ClaudeHistoryEnricher      MenuContentView   menu-bar popover
               ClaudeDesktopCollector     MainWindowView    dashboard (Sessions/Automations/Config/About)
               CodexSessionCollector      SessionNodeView   hierarchy + collapse
-              CodexSubagentScanner       FloatingPanel     pinned always-on-top window
-              CodexAutomationCollector   Notifier          sound + Notification Center
-              ClaudeRoutinesCollector    AppSettings        editor / sound / launch-at-login
-              ProcessCollector           AccessibilityBanner / LoginItem / Updater
+              CodexSubagentScanner       Notifier          sound + Notification Center
+              CodexAutomationCollector   AppSettings       editor / sound / launch-at-login
+              ClaudeRoutinesCollector    AccessibilityBanner / LoginItem / Updater
+              ProcessCollector
   Enrich      GitStatus / PRStatus / GitWorktree
   Model       UnifiedSession (+ SessionRich) / SessionTree / ScheduledJob
   Actions     Recaller (AX recall + multi-display move) / EditorOpener

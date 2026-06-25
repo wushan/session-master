@@ -8,7 +8,7 @@ struct SessionMasterApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContentView(store: delegate.store, floating: delegate.floating)
+            MenuContentView(store: delegate.store)
         } label: {
             MenuBarLabel(store: delegate.store)
         }
@@ -25,13 +25,9 @@ struct SessionMasterApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = SessionStore()
-    lazy var floating = FloatingPanel(store: store)
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)   // menu-bar only, no Dock icon
         store.start()
-        if CommandLine.arguments.contains("--pinned") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.floating.show() }
-        }
     }
 }
 

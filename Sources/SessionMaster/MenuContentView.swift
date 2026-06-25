@@ -1,12 +1,21 @@
 import SwiftUI
+import AppKit
 import SessionCore
 
 struct MenuContentView: View {
     @Bindable var store: SessionStore
-    @Bindable var floating: FloatingPanel
     @Environment(\.openWindow) private var openWindow
     @State private var collapsed: Set<String> = []
     @State private var search = ""
+    @State private var popoverWindow: NSWindow?
+
+    /// Open the dashboard to a tab and dismiss the menu-bar popover (it doesn't auto-close when
+    /// we bring our own window forward).
+    private func showDashboard(_ tab: DashboardTab) {
+        store.selectedTab = tab
+        popoverWindow?.close()
+        openDashboard(openWindow)
+    }
 
     /// Show every session so you can pick any one back up — sorted so the ones needing you
     /// (and then the most recently active) are at the top.
@@ -55,6 +64,7 @@ struct MenuContentView: View {
             footer
         }
         .frame(width: 380)
+        .background(WindowAccessor { popoverWindow = $0 })
         .onAppear {
             store.openDashboard = { tab in
                 store.selectedTab = tab
@@ -91,12 +101,6 @@ struct MenuContentView: View {
                     .font(.caption).foregroundStyle(.yellow).help("Your turn")
             }
             Text("\(popoverSessions.count)").font(.caption).foregroundStyle(.secondary)
-            Button { floating.toggle() } label: {
-                Image(systemName: floating.isShown ? "pin.fill" : "pin")
-                    .foregroundStyle(floating.isShown ? .blue : .secondary)
-            }
-            .buttonStyle(.borderless).pointerCursor()
-            .help(floating.isShown ? "Unpin floating window" : "Pin as floating window")
         }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 
@@ -127,7 +131,7 @@ struct MenuContentView: View {
             }
             .buttonStyle(.borderless).pointerCursor()
             .help(store.launchAtLogin ? "Launch at login: on" : "Launch at login: off")
-            Button { store.selectedTab = .config; openDashboard(openWindow) } label: {
+            Button { showDashboard(.config) } label: {
                 Image(systemName: "gearshape")
             }
             .buttonStyle(.borderless).pointerCursor().help("Settings")
@@ -140,7 +144,7 @@ struct MenuContentView: View {
                 Text(msg).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Button { store.selectedTab = .sessions; openDashboard(openWindow) } label: {
+            Button { showDashboard(.sessions) } label: {
                 Label("Dashboard", systemImage: "macwindow.badge.plus")
             }
             .buttonStyle(.borderedProminent).controlSize(.large).pointerCursor()

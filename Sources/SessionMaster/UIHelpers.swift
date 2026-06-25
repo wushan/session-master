@@ -18,6 +18,17 @@ struct TimelineDot: View {
     }
 }
 
+/// Resolves the NSWindow hosting a SwiftUI view — used to dismiss the menu-bar popover on demand.
+struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { onResolve(v.window) }
+        return v
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 /// Shows the pointing-hand cursor on hover (SwiftUI buttons don't by default on macOS 14).
 struct PointerCursor: ViewModifier {
     var active: Bool = true
