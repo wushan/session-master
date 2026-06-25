@@ -139,7 +139,9 @@ public struct UnifiedSession: Identifiable, Sendable {
     public var canResume: Bool {
         if isEnded { return true }
         if source == .claudeDesktop, pid == nil { return true }   // saved → resume in a terminal
-        if source == .codexCLI { return true }
+        // A Codex CLI thread is resumable only once its terminal is gone — while it's live, recall
+        // it instead (resuming a running thread would attach a second TUI to the same rollout).
+        if source == .codexCLI { return !canRecall }
         return false
     }
 

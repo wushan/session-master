@@ -18,7 +18,7 @@ struct SessionMasterApp: App {
             MainWindowView(store: delegate.store)
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 880, height: 580)
+        .defaultSize(width: 430, height: 580)
     }
 }
 

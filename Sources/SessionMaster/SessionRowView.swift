@@ -17,6 +17,8 @@ struct SessionRowView: View {
     @State private var draft = ""
     @FocusState private var titleFocused: Bool
 
+    private var rowVPad: CGFloat { isChild ? 5 : 7 }
+
     var body: some View {
         // The whole row recalls; action buttons overlay the top-right on hover so the content
         // (title / path / subtitle) gets the full width.
@@ -58,6 +60,7 @@ struct SessionRowView: View {
                     Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
                 }
             }
+            .padding(.vertical, rowVPad)
             Spacer(minLength: 4)
         }
         .contentShape(Rectangle())
@@ -66,9 +69,10 @@ struct SessionRowView: View {
             else if session.canResume { onResume?() }
         }
         .pointerCursor(session.canRecall || session.canResume)
-        .padding(.vertical, isChild ? 5 : 8).padding(.horizontal, 8)
-        .background(hovering ? Color.primary.opacity(0.06) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 8)
+        // Rounded hover fill as a background (not a clip) so the timeline rail isn't cut at the
+        // row edges — it runs straight into the next row.
+        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.06) : .clear))
         .overlay(alignment: .topTrailing) { if hovering { actions.padding(.top, 6).padding(.trailing, 8) } }
         // Old sessions (>48h idle) fade to grayscale so the live ones stand out — still clickable.
         .saturation(session.isStale && !editing ? 0 : 1)
@@ -88,8 +92,10 @@ struct SessionRowView: View {
         }
     }
 
-    /// A vertical timeline rail with the last-activity time on the left as the time axis: the
-    /// status dot sits at the top (pulsing when working), a connector line runs down the row.
+    /// A vertical timeline rail: the last-activity time sits on the left as the axis, then one
+    /// full-height line runs top-to-bottom of the row with the status dot riding on it near the
+    /// title. Because the line fills the whole row height and rows are stacked flush, the rails of
+    /// consecutive rows join into a single continuous vertical timeline (not a per-row segment).
     @ViewBuilder private var timelineLeading: some View {
         if isChild {
             Circle().fill(session.attention.color).frame(width: 7, height: 7)
@@ -97,13 +103,12 @@ struct SessionRowView: View {
         } else {
             HStack(alignment: .top, spacing: 5) {
                 Text(relativeAge ?? "").font(.system(size: 10)).foregroundStyle(.tertiary)
-                    .frame(width: 30, alignment: .trailing).padding(.top, 1)
-                VStack(spacing: 0) {
+                    .frame(width: 28, alignment: .trailing).padding(.top, rowVPad)
+                ZStack(alignment: .top) {
+                    Rectangle().fill(.quaternary).frame(width: 1.5).frame(maxHeight: .infinity)
                     TimelineDot(color: session.attention.color, pulsing: session.attention == .working)
-                        .padding(.top, 2).help(session.attention.label)
-                    Rectangle().fill(.quaternary).frame(width: 1.5)
-                        .frame(maxHeight: .infinity).padding(.top, 2)
-                }.frame(width: 10)
+                        .padding(.top, rowVPad - 1).help(session.attention.label)
+                }.frame(width: 12)
             }
         }
     }

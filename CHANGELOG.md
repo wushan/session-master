@@ -2,6 +2,25 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.0] — 2026-06-25
+
+### Added
+- **Resume a closed or saved session.** A session whose terminal is gone (shown as *Ended — resume*,
+  with a blue **resume** chip) now offers a **Resume** action that reopens it in a fresh terminal
+  running the tool's own resume command — `claude --resume <id>` or `codex resume <id>` — in the
+  session's folder. Works for ended Claude CLI sessions, saved (non-live) Claude Desktop
+  conversations, and Codex CLI threads. Resume launches an **interactive login shell** so your shell
+  config (e.g. `.zshrc`) is sourced — without it Claude's resume renderer crashes, which was the
+  difference between a manual `claude --resume` (works) and a naively scripted one (crashes).
+- **Terminal picker** (*Config → Terminal*): choose which terminal Resume opens in — System default,
+  Terminal, iTerm2, or Ghostty.
+
+### Changed
+- The dashboard now **opens with the sidebar collapsed** into a narrower (~420pt) session list;
+  reveal the tabs anytime with the title-bar sidebar toggle.
+- The **Recent timeline is one continuous rail** — the status dots ride a single vertical line down
+  the whole list instead of a separate segment boxed around each row.
+
 ## [0.2.9] — 2026-06-25
 
 ### Added

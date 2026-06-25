@@ -27,7 +27,10 @@ struct MainWindowView: View {
     @State private var expandedProjects: Set<String> = []
     @State private var settings = AppSettings.shared
     @State private var window: NSWindow?
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var didSetInitialSize = false
+    // Start with the sidebar hidden so the window opens as a narrow session list; the title-bar
+    // sidebar toggle (and ⌃⌘S) reveals the tabs on demand.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
     private let perProjectLimit = 5
 
     var body: some View {
@@ -55,9 +58,9 @@ struct MainWindowView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 720, minHeight: 460)
+        .frame(minWidth: 420, minHeight: 460)
         .background(.background)
-        .background(WindowAccessor { window = $0; applyAlwaysOnTop() })
+        .background(WindowAccessor { window = $0; applyAlwaysOnTop(); applyInitialSize() })
         .onChange(of: settings.dashboardAlwaysOnTop) { applyAlwaysOnTop() }
         // Menu-bar apps (.accessory) have no Dock tile, so a minimized window vanishes with no
         // way back. While the dashboard is open, become a regular app so it gets a Dock icon and
@@ -78,6 +81,18 @@ struct MainWindowView: View {
     /// preference is on; back to normal when off.
     private func applyAlwaysOnTop() {
         window?.level = settings.dashboardAlwaysOnTop ? .floating : .normal
+    }
+
+    /// Shrink a legacy oversized window down to the new narrow default, once. Leaves windows the
+    /// user has sized themselves alone (only touches clearly-too-wide ones).
+    private func applyInitialSize() {
+        guard !didSetInitialSize, let window else { return }
+        didSetInitialSize = true
+        var f = window.frame
+        if f.size.width > 520 {
+            f.size.width = 430
+            window.setFrame(f, display: true, animate: false)
+        }
     }
 
     // MARK: Session controls (filter / sort / search — the tabs live in the sidebar now)
@@ -145,10 +160,16 @@ struct MainWindowView: View {
         } else if filteredSessions.isEmpty {
             emptyState("No matching sessions")
         } else if sortMode == .recent {
-            List(recentNodes) { node in
-                SessionNodeView(node: node, expanded: $expandedNodes, store: store)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
-            }.listStyle(.inset)
+            // Plain scroll with zero inter-row spacing so each row's timeline rail joins the next
+            // into one continuous vertical line (a List inserts gaps that break the rail).
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(recentNodes) { node in
+                        SessionNodeView(node: node, expanded: $expandedNodes, store: store)
+                            .padding(.horizontal, 6)
+                    }
+                }.padding(.vertical, 6)
+            }
         } else {
             List {
                 ForEach(grouped, id: \.project) { group in

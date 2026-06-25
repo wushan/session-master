@@ -134,8 +134,19 @@ final class SessionStore {
     /// Reopen an ended CLI session: launch the chosen terminal running its resume command in its cwd.
     func resume(_ s: UnifiedSession) {
         guard let cmd = s.resumeCommand else { return }
-        TerminalLauncher.run(command: cmd, cwd: s.cwd, terminal: settings.resumeTerminal)
-        lastRecallMessage = "Resuming “\(s.displayTitle)” in \(settings.resumeTerminal.rawValue)…"
+        // Need a real folder: `cd '' || exit 1` does NOT abort (empty operand is a no-op), so an
+        // empty cwd would silently resume in $HOME — the wrong place. Refuse instead.
+        guard !s.cwd.isEmpty else {
+            lastRecallMessage = "Can’t resume “\(s.displayTitle)” — its folder is unknown."
+            return
+        }
+        let terminal = settings.resumeTerminal
+        let cwd = s.cwd
+        lastRecallMessage = "Resuming “\(s.displayTitle)” in \(terminal.rawValue)…"
+        // File IO + `open` off the main thread (like recall) so the UI never hitches.
+        Task.detached(priority: .userInitiated) {
+            TerminalLauncher.run(command: cmd, cwd: cwd, terminal: terminal)
+        }
     }
 
     /// Resolve the session's real worktree (feature-branch worktree, not the repo root).

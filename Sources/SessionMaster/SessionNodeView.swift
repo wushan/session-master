@@ -12,7 +12,7 @@ struct SessionNodeView: View {
     private var isExpanded: Bool { expanded.contains(node.id) }
 
     var body: some View {
-        VStack(spacing: 1) {
+        VStack(spacing: 0) {
             HStack(spacing: 0) {
                 chevron
                 SessionRowView(session: node.session,

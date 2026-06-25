@@ -35,7 +35,10 @@ public enum TerminalLauncher {
     /// the user's shell config is sourced.
     private static func openCommandFile(shell: String, inner: String, app: String?) {
         let script = "#!/bin/bash\nexec \(shell) -l -i -c \(sq(inner))\n"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("sm-resume.command")
+        // Unique filename: a fixed path lets a second resume overwrite the first before Terminal
+        // has exec'd it, sending both windows to the same (latest) session.
+        let name = "sm-resume-\(UUID().uuidString.prefix(8)).command"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
         guard (try? script.write(to: url, atomically: true, encoding: .utf8)) != nil else { return }
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         if let app { Shell.run("/usr/bin/open", ["-a", app, url.path]) }

@@ -60,13 +60,19 @@ puts it in one place, with one-click recall.
   programmatic Space switch, so SessionMaster fans that terminal's windows out with **App Exposé** —
   click the one you want and macOS switches to its desktop natively. Codex Desktop sessions recall
   via the `codex://threads/<id>` deep link straight to the conversation.
+- **Resume a closed session** (click the row, or its blue **resume** chip): when a CLI session's
+  terminal is gone — or it's a saved Desktop / Codex thread — SessionMaster reopens it in a fresh
+  terminal running the tool's own resume command (`claude --resume <id>` / `codex resume <id>`) in
+  the session's folder. Pick which terminal it opens in — **System default / Terminal / iTerm2 /
+  Ghostty** — under *Config ▸ Terminal*.
 - **Open in your editor / Reveal in Finder** — pointed at the session's *real worktree*, not
   the repo root. Editor is configurable (VS Code / Cursor / Zed / Sublime / Xcode / custom).
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.
 - **Dashboard** with Project / Recent sort, source filter, and search; **Config** and **About**
   (version + one-click *Update via Homebrew*) tabs. Open it and a Dock icon appears so you can
-  minimize it like any window; close it and the app drops back to menu-bar only. Optionally
-  **keep it always on top** so the session list stays visible behind your work.
+  minimize it like any window; close it and the app drops back to menu-bar only. It **stays
+  always on top** by default so the session list is visible behind your work — toggle that off in
+  Config.
 - **Launch at login**, menu-bar only — with a **configurable menu-bar icon**.
 
 <p align="center">
@@ -83,7 +89,7 @@ puts it in one place, with one-click recall.
 | 🟢 green | **working** |
 | ⚪ gray | idle / shell / background |
 
-The menu-bar icon shows the count of sessions that need you.
+A session whose terminal has closed shows a blue **resume** chip instead of a live dot — click it (or the row) to reopen the session in a terminal. The menu-bar icon shows the count of sessions that need you.
 
 ## Install
 
@@ -169,12 +175,13 @@ SessionCore (library)                 SessionMaster (menu-bar app)
               ClaudeDesktopCollector     MainWindowView    dashboard (Sessions/Automations/Config/About)
               CodexSessionCollector      SessionNodeView   hierarchy + collapse
               CodexSubagentScanner       Notifier          sound + Notification Center
-              CodexAutomationCollector   AppSettings       editor / sound / launch-at-login
+              CodexAutomationCollector   AppSettings       editor / terminal / sound / launch
               ClaudeRoutinesCollector    AccessibilityBanner / LoginItem / Updater
               ProcessCollector
+              ClaudeEndedCollector       (recently-closed CLI sessions → Resume)
   Enrich      GitStatus / PRStatus / GitWorktree
   Model       UnifiedSession (+ SessionRich) / SessionTree / ScheduledJob
-  Actions     Recaller (AX recall + multi-display move) / EditorOpener
+  Actions     Recaller (AX recall + multi-display move) / EditorOpener / TerminalLauncher (Resume)
   Util        FileCache (mtime-keyed) / JSONLReader / TOMLLite / RRule
 ```
 
