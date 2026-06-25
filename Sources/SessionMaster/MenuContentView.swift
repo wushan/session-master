@@ -120,27 +120,26 @@ struct MenuContentView: View {
     }
 
     private var footer: some View {
-        HStack {
+        HStack(spacing: 10) {
+            Button { store.toggleLaunchAtLogin() } label: {
+                Image(systemName: store.launchAtLogin ? "bolt.fill" : "bolt")
+                    .foregroundStyle(store.launchAtLogin ? .yellow : .secondary)
+            }
+            .buttonStyle(.borderless).pointerCursor()
+            .help(store.launchAtLogin ? "Launch at login: on" : "Launch at login: off")
+            Button { store.selectedTab = .config; openDashboard(openWindow) } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless).pointerCursor().help("Settings")
+
             if !store.accessibilityTrusted {
-                Button {
-                    store.requestAccessibility()
-                } label: {
+                Button { store.requestAccessibility() } label: {
                     Label("Enable recall", systemImage: "exclamationmark.shield")
                 }.buttonStyle(.borderless).foregroundStyle(.orange).font(.caption).pointerCursor()
             } else if let msg = store.lastRecallMessage {
                 Text(msg).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Button { store.toggleLaunchAtLogin() } label: {
-                Image(systemName: store.launchAtLogin ? "bolt.fill" : "bolt")
-                    .foregroundStyle(store.launchAtLogin ? .yellow : .secondary)
-            }
-            .buttonStyle(.borderless).font(.caption).pointerCursor()
-            .help(store.launchAtLogin ? "Launch at login: on" : "Launch at login: off")
-            Button { store.selectedTab = .config; openDashboard(openWindow) } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(.borderless).pointerCursor().help("Settings")
             Button { store.selectedTab = .sessions; openDashboard(openWindow) } label: {
                 Label("Dashboard", systemImage: "macwindow.badge.plus")
             }

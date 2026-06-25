@@ -16,53 +16,52 @@ struct SessionRowView: View {
     @FocusState private var titleFocused: Bool
 
     var body: some View {
+        // The whole row recalls; action buttons overlay the top-right on hover so the content
+        // (title / path / subtitle) gets the full width.
         HStack(alignment: .top, spacing: 8) {
-            // Clicking the row body recalls the session (the buttons handle other actions).
-            HStack(alignment: .top, spacing: 8) {
-                timelineLeading
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        if editing {
-                            TextField("Title", text: $draft)
-                                .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 12 : 13))
-                                .frame(maxWidth: 220).focused($titleFocused)
-                                .onAppear { titleFocused = true }
-                                .onSubmit { onRename?(draft); editing = false }
-                                .onExitCommand { editing = false }
-                        } else {
-                            Text(session.displayTitle)
-                                .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
-                            if session.rich.customTitle != nil {
-                                Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.tertiary)
-                            }
-                            sourceBadge
-                            if session.isAutomationRun { autoBadge }
-                            prChip
+            timelineLeading
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    if editing {
+                        TextField("Title", text: $draft)
+                            .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 12 : 13))
+                            .frame(maxWidth: 220).focused($titleFocused)
+                            .onAppear { titleFocused = true }
+                            .onSubmit { onRename?(draft); editing = false }
+                            .onExitCommand { editing = false }
+                    } else {
+                        Text(session.displayTitle)
+                            .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
+                        if session.rich.customTitle != nil {
+                            Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.tertiary)
                         }
-                    }
-                    metaLine
-                    HStack(spacing: 6) {
-                        if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
-                        Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                        gitChips
-                    }
-                    if let sub = session.subtitle, !sub.isEmpty {
-                        Text(sub).font(.caption2).foregroundStyle(.secondary).lineLimit(1).italic()
-                    }
-                    if session.attention == .needsApproval, let w = session.waitingFor {
-                        Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
+                        sourceBadge
+                        if session.isAutomationRun { autoBadge }
+                        prChip
                     }
                 }
-                Spacer(minLength: 4)
+                metaLine
+                HStack(spacing: 6) {
+                    if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
+                    Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                    gitChips
+                }
+                if let sub = session.subtitle, !sub.isEmpty {
+                    Text(sub).font(.caption2).foregroundStyle(.secondary).lineLimit(1).italic()
+                }
+                if session.attention == .needsApproval, let w = session.waitingFor {
+                    Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
+                }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { if session.canRecall { onRecall() } }
-            .pointerCursor(session.canRecall)
-            actions
+            Spacer(minLength: 4)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { if session.canRecall { onRecall() } }
+        .pointerCursor(session.canRecall)
         .padding(.vertical, isChild ? 5 : 8).padding(.horizontal, 8)
         .background(hovering ? Color.primary.opacity(0.06) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .topTrailing) { if hovering { actions.padding(.top, 6).padding(.trailing, 8) } }
         // Old sessions (>48h idle) fade to grayscale so the live ones stand out — still clickable.
         .saturation(session.isStale && !editing ? 0 : 1)
         .opacity(session.isStale && !hovering && !editing ? 0.5 : 1)
@@ -201,7 +200,8 @@ struct SessionRowView: View {
                 IconButton(systemName: "folder", help: "Reveal worktree in Finder", action: onReveal)
             }
         }
-        .opacity(hovering ? 1 : 0.5)
+        .padding(.horizontal, 3).padding(.vertical, 1)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7))
     }
 
     private func prettyPath(_ p: String) -> String {
