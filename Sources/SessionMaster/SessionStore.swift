@@ -131,11 +131,11 @@ final class SessionStore {
         }
     }
 
-    /// Reopen an ended CLI session: launch a Terminal running its resume command in its cwd.
+    /// Reopen an ended CLI session: launch the chosen terminal running its resume command in its cwd.
     func resume(_ s: UnifiedSession) {
         guard let cmd = s.resumeCommand else { return }
-        Resumer.open(command: cmd, cwd: s.cwd)
-        lastRecallMessage = "Resuming “\(s.displayTitle)” in Terminal…"
+        TerminalLauncher.run(command: cmd, cwd: s.cwd, terminal: settings.resumeTerminal)
+        lastRecallMessage = "Resuming “\(s.displayTitle)” in \(settings.resumeTerminal.rawValue)…"
     }
 
     /// Resolve the session's real worktree (feature-branch worktree, not the repo root).

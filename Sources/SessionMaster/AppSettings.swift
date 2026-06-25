@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SessionCore
 
 /// User preferences, persisted in UserDefaults. Shared singleton read by the store + views.
 @MainActor
@@ -39,6 +40,8 @@ final class AppSettings {
     var notificationsEnabled: Bool { didSet { d.set(notificationsEnabled, forKey: "notifications") } }
     /// Keep the dashboard window floating above other apps' windows so the session list stays visible.
     var dashboardAlwaysOnTop: Bool { didSet { d.set(dashboardAlwaysOnTop, forKey: "alwaysOnTop") } }
+    /// Which terminal "Resume" opens in.
+    var resumeTerminal: TerminalApp { didSet { d.set(resumeTerminal.rawValue, forKey: "resumeTerminal") } }
 
     private let d = UserDefaults.standard
     private init() {
@@ -48,5 +51,6 @@ final class AppSettings {
         soundEnabled = d.object(forKey: "sound") as? Bool ?? true
         notificationsEnabled = d.object(forKey: "notifications") as? Bool ?? true
         dashboardAlwaysOnTop = d.object(forKey: "alwaysOnTop") as? Bool ?? true
+        resumeTerminal = TerminalApp(rawValue: d.string(forKey: "resumeTerminal") ?? "") ?? .systemDefault
     }
 }

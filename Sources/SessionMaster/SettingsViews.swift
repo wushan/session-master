@@ -29,6 +29,13 @@ struct ConfigView: View {
                               text: $settings.customEditorCommand)
                 }
             }
+            Section("Terminal") {
+                Picker("Resume sessions in", selection: $settings.resumeTerminal) {
+                    ForEach(TerminalApp.allCases) { Text($0.rawValue).tag($0) }
+                }
+                Text("“Resume” opens this terminal running the session's resume command in its folder.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Notifications") {
                 Toggle("Notify when a session needs you", isOn: $settings.notificationsEnabled)
                 Toggle("Play a sound", isOn: $settings.soundEnabled)
