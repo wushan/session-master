@@ -6,6 +6,11 @@ struct SessionRowView: View {
     let session: UnifiedSession
     var isChild = false
     var subagentCount = 0
+    // Position in a continuous-rail list: trims the rail so it starts at the first dot and ends at
+    // the last (no overhang above the top dot / no tail below the bottom one). Default false =
+    // full-height rail (used where rows don't form one continuous timeline).
+    var isFirst = false
+    var isLast = false
     let onRecall: () -> Void
     let onVSCode: () -> Void
     var onReveal: (() -> Void)? = nil
@@ -105,11 +110,27 @@ struct SessionRowView: View {
                 Text(relativeAge ?? "").font(.system(size: 10)).foregroundStyle(.tertiary)
                     .frame(width: 28, alignment: .trailing).padding(.top, rowVPad)
                 ZStack(alignment: .top) {
-                    Rectangle().fill(.quaternary).frame(width: 1.5).frame(maxHeight: .infinity)
+                    railLine
                     TimelineDot(color: session.attention.color, pulsing: session.attention == .working)
                         .padding(.top, rowVPad - 1).help(session.attention.label)
                 }.frame(width: 12)
             }
+        }
+    }
+
+    /// Vertical distance from the row's top to the dot's center — where the rail starts (first row)
+    /// or ends (last row).
+    private var dotCenterY: CGFloat { rowVPad + 3.5 }
+
+    /// The rail segment for this row, trimmed at the ends of a continuous list: from the dot down on
+    /// the first row, top down to the dot on the last, full height in the middle, none for a lone row.
+    @ViewBuilder private var railLine: some View {
+        let bar = Rectangle().fill(.quaternary).frame(width: 1.5)
+        switch (isFirst, isLast) {
+        case (true, true):   Color.clear
+        case (true, false):  bar.frame(maxHeight: .infinity).padding(.top, dotCenterY)
+        case (false, true):  bar.frame(height: dotCenterY)
+        case (false, false): bar.frame(maxHeight: .infinity)
         }
     }
 

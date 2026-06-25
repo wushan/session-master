@@ -8,6 +8,8 @@ struct SessionNodeView: View {
     let node: SessionNode
     @Binding var expanded: Set<String>
     let store: SessionStore
+    var isFirst = false
+    var isLast = false
 
     private var isExpanded: Bool { expanded.contains(node.id) }
 
@@ -17,6 +19,7 @@ struct SessionNodeView: View {
                 chevron
                 SessionRowView(session: node.session,
                                subagentCount: node.children.count,
+                               isFirst: isFirst, isLast: isLast,
                                onRecall: { store.recall(node.session) },
                                onVSCode: { store.openInVSCode(node.session) },
                                onReveal: { store.revealInFinder(node.session) },

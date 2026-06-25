@@ -164,8 +164,9 @@ struct MainWindowView: View {
             // into one continuous vertical line (a List inserts gaps that break the rail).
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(recentNodes) { node in
-                        SessionNodeView(node: node, expanded: $expandedNodes, store: store)
+                    ForEach(Array(recentNodes.enumerated()), id: \.element.id) { idx, node in
+                        SessionNodeView(node: node, expanded: $expandedNodes, store: store,
+                                        isFirst: idx == 0, isLast: idx == recentNodes.count - 1)
                             .padding(.horizontal, 6)
                     }
                 }.padding(.vertical, 6)
