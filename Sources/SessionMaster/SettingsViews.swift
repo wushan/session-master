@@ -150,7 +150,10 @@ enum Updater {
         #!/bin/bash
         echo "Updating SessionMaster via Homebrew…"; echo
         if brew update && brew upgrade --cask wushan/tap/session-master; then
-          echo; echo "✅ Done — quit and reopen SessionMaster to run the new version."
+          echo; echo "✅ Updated — relaunching SessionMaster…"
+          pkill -f "SessionMaster.app/Contents/MacOS/SessionMaster" 2>/dev/null
+          sleep 1
+          open -a SessionMaster
         else
           echo; echo "❌ Update failed (see above) — or download the .dmg from Releases."
         fi

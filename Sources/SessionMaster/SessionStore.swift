@@ -15,6 +15,7 @@ final class SessionStore {
     private(set) var launchAtLogin = false
     private(set) var lastRefresh: Date?
     private(set) var hasLoaded = false           // first poll done? (loading vs empty)
+    private(set) var availableUpdate: String?    // newer published version, if one exists
     var selectedTab: DashboardTab = .sessions    // which dashboard tab is shown
     var lastRecallMessage: String?
 
@@ -29,8 +30,21 @@ final class SessionStore {
         launchAtLogin = LoginItem.isEnabled
         Notifier.requestAuthorization()
         refresh()
+        checkForUpdate()
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
+        }
+    }
+
+    private var lastUpdateCheck: Date?
+    /// Check GitHub for a newer release, at most hourly. Surfaces `availableUpdate` for the UI.
+    func checkForUpdate(force: Bool = false) {
+        if !force, let last = lastUpdateCheck, Date().timeIntervalSince(last) < 3600 { return }
+        lastUpdateCheck = Date()
+        Task { [weak self] in
+            let latest = await Updater.latest()
+            guard let self, let latest else { return }
+            self.availableUpdate = Updater.isNewer(latest, than: Updater.currentVersion) ? latest : nil
         }
     }
 
@@ -55,6 +69,7 @@ final class SessionStore {
                 self.hasLoaded = true
                 self.refreshing = false
                 self.detectAttentionTransitions()
+                self.checkForUpdate()   // throttled to hourly inside
             }
         }
     }

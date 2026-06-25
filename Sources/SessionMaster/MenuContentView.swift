@@ -84,6 +84,16 @@ struct MenuContentView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Text("Sessions").font(.headline)
+            if let v = store.availableUpdate {
+                Button { showDashboard(.about) } label: {
+                    Label("Update \(v)", systemImage: "arrow.down.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.18)).foregroundStyle(.orange)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain).pointerCursor().help("A new version is available — open About to update")
+            }
             Spacer()
             if store.needsApprovalCount > 0 {
                 Label("\(store.needsApprovalCount)", systemImage: "bell.badge.fill")

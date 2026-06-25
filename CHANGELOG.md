@@ -2,6 +2,16 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.6] — 2026-06-25
+
+### Added
+- **Update-available indicator**: a small pill in the menu-bar popover header (and a badge on the
+  dashboard's About tab) appears when a newer release is published — click it to jump to About.
+
+### Changed
+- **"Update via Homebrew" now relaunches the app automatically** after a successful upgrade, so you
+  no longer have to quit and reopen by hand.
+
 ## [0.2.5] — 2026-06-25
 
 A three-way code review (a multi-agent pass + Codex + a manual pass) drove a batch of correctness,

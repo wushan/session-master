@@ -33,7 +33,9 @@ struct MainWindowView: View {
         NavigationSplitView {
             List(DashboardTab.allCases, id: \.self, selection: Binding(
                 get: { store.selectedTab }, set: { if let v = $0 { store.selectedTab = v } })) { tab in
-                Label(tab.rawValue, systemImage: tab.icon).tag(tab)
+                Label(tab.rawValue, systemImage: tab.icon)
+                    .badge(tab == .about && store.availableUpdate != nil ? "Update" : nil)
+                    .tag(tab)
             }
             .navigationSplitViewColumnWidth(min: 150, ideal: 168, max: 220)
         } detail: {
