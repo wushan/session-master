@@ -20,7 +20,8 @@ struct SessionNodeView: View {
                                onRecall: { store.recall(node.session) },
                                onVSCode: { store.openInVSCode(node.session) },
                                onReveal: { store.revealInFinder(node.session) },
-                               onRename: { store.setTitle($0, for: node.session) })
+                               onRename: { store.setTitle($0, for: node.session) },
+                               onResume: { store.resume(node.session) })
             }
             if node.hasChildren, isExpanded {
                 ForEach(node.children) { child in

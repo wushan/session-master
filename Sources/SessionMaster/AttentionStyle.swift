@@ -9,6 +9,7 @@ extension UnifiedSession.Attention {
         case .awaitingYou:   return .yellow     // your turn to respond
         case .working:       return .green      // actively working
         case .idle:          return .secondary
+        case .ended:         return Color.secondary.opacity(0.5)   // dim — resumable, not active
         case .unknown:       return Color.secondary.opacity(0.5)
         }
     }

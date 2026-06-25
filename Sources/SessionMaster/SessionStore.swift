@@ -131,6 +131,13 @@ final class SessionStore {
         }
     }
 
+    /// Reopen an ended CLI session: launch a Terminal running its resume command in its cwd.
+    func resume(_ s: UnifiedSession) {
+        guard let cmd = s.resumeCommand else { return }
+        Resumer.open(command: cmd, cwd: s.cwd)
+        lastRecallMessage = "Resuming “\(s.displayTitle)” in Terminal…"
+    }
+
     /// Resolve the session's real worktree (feature-branch worktree, not the repo root).
     func effectivePath(_ s: UnifiedSession) -> String {
         GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)

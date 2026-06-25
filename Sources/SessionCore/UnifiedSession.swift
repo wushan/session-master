@@ -19,6 +19,7 @@ public struct UnifiedSession: Identifiable, Sendable {
         case awaitingYou     // assistant finished; your turn to respond
         case working         // actively processing
         case idle            // background/codex not recently active
+        case ended           // CLI session whose process is gone — resumable, not recallable
         case unknown
 
         public var label: String {
@@ -27,13 +28,14 @@ public struct UnifiedSession: Identifiable, Sendable {
             case .awaitingYou:   return "Your turn"
             case .working:       return "Working"
             case .idle:          return "Idle"
+            case .ended:         return "Ended — resume"
             case .unknown:       return "—"
             }
         }
         public var rank: Int {
             switch self {
             case .needsApproval: return 0; case .awaitingYou: return 1
-            case .working: return 2; case .idle: return 3; case .unknown: return 4
+            case .working: return 2; case .idle: return 3; case .ended: return 4; case .unknown: return 5
             }
         }
         public var needsUser: Bool { self == .needsApproval || self == .awaitingYou }
@@ -56,6 +58,7 @@ public struct UnifiedSession: Identifiable, Sendable {
     public let updatedAt: Date?
     public let isAutomationRun: Bool     // a Codex automation execution (vs a manual session)
     public let scheduledTaskId: String?  // set when a Claude routine (scheduled task) spawned this
+    public let isEnded: Bool             // CLI process is gone — show "Resume" instead of "Recall"
 
     /// This session was started by a Claude routine, not a person.
     public var isRoutineRun: Bool { scheduledTaskId != nil }
@@ -67,12 +70,13 @@ public struct UnifiedSession: Identifiable, Sendable {
                 model: String?, effort: String?, branch: String?, worktreeName: String?,
                 originator: String?, status: Status, waitingFor: String?,
                 terminal: TerminalInfo, updatedAt: Date?, isAutomationRun: Bool = false,
-                scheduledTaskId: String? = nil) {
+                scheduledTaskId: String? = nil, isEnded: Bool = false) {
         self.id = id; self.source = source; self.pid = pid; self.cwd = cwd; self.name = name
         self.title = title; self.model = model; self.effort = effort; self.branch = branch
         self.worktreeName = worktreeName; self.originator = originator; self.status = status
         self.waitingFor = waitingFor; self.terminal = terminal; self.updatedAt = updatedAt
         self.isAutomationRun = isAutomationRun; self.scheduledTaskId = scheduledTaskId
+        self.isEnded = isEnded
     }
 
     /// Project name, stripping the worktree suffix so sessions group by repo.
@@ -107,6 +111,7 @@ public struct UnifiedSession: Identifiable, Sendable {
     /// Derived attention state. For interactive Claude sessions, `idle` is "your turn";
     /// for Codex background/automation rollouts, `idle` is just "not recently active".
     public var attention: Attention {
+        if isEnded { return .ended }
         switch status {
         case .waiting: return .needsApproval
         case .busy:    return .working
@@ -122,9 +127,28 @@ public struct UnifiedSession: Identifiable, Sendable {
     public var recallTarget: RecallTarget { RecallTarget(cwd: cwd, windowTitleHint: name, terminal: terminal) }
 
     public var canRecall: Bool {
+        if isEnded { return false }
         switch source {
         case .claudeCLI, .codexCLI: return terminal.terminalPID != nil || originator == "VSCode"
         case .claudeDesktop, .codexDesktop: return true
+        }
+    }
+
+    /// Can be reopened in a terminal with the tool's own resume command: a closed CLI session, a
+    /// saved (non-live) Claude session, or a Codex CLI thread.
+    public var canResume: Bool {
+        if isEnded { return true }
+        if source == .claudeDesktop, pid == nil { return true }   // saved → resume in a terminal
+        if source == .codexCLI { return true }
+        return false
+    }
+
+    /// The command that resumes this session (run in its cwd by a new terminal).
+    public var resumeCommand: String? {
+        guard canResume else { return nil }
+        switch source {
+        case .claudeCLI, .claudeDesktop: return "claude --resume \(id)"
+        case .codexCLI, .codexDesktop:   return "codex resume \(id)"
         }
     }
 }
@@ -146,8 +170,11 @@ public enum SessionAggregator {
             let subs = CodexSubagentScanner.scan(rollout: c.url)
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
         }
+        // Recently-ended Claude CLI sessions (terminal closed) — resumable, not currently shown.
+        let shownIds = Set((claude + desktop).map(\.id))
+        let ended = ClaudeEndedCollector.recent(excluding: shownIds).compactMap(endedSession(from:))
 
-        var sessions = claude + codex + desktop
+        var sessions = claude + codex + desktop + ended
         // Belt-and-suspenders: never emit two sessions sharing an id (SwiftUI Identifiable).
         var seenIds = Set<String>()
         sessions = sessions.filter { seenIds.insert($0.id).inserted }
@@ -164,6 +191,19 @@ public enum SessionAggregator {
             }
         }
         return (sessions.sorted(by: order), subagents)
+    }
+
+    /// A recently-ended Claude CLI session, reconstructed from its transcript so it can be resumed.
+    static func endedSession(from e: EndedClaudeSession) -> UnifiedSession? {
+        guard let cwd = e.history.cwd, !cwd.isEmpty else { return nil }
+        let h = e.history
+        var u = UnifiedSession(
+            id: e.sessionId, source: .claudeCLI, pid: nil, cwd: cwd, name: nil, title: h.aiTitle,
+            model: h.model, effort: nil, branch: h.branch, worktreeName: nil, originator: nil,
+            status: .idle, waitingFor: nil, terminal: .dead, updatedAt: e.updatedAt, isEnded: true)
+        u.rich.aiTitle = h.aiTitle; u.rich.lastPrompt = h.lastPrompt
+        u.rich.prNumber = h.prNumber; u.rich.prURL = h.prURL; u.rich.contextPercent = h.contextPercent
+        return u
     }
 
     /// Saved Claude Desktop sessions that aren't currently live (those show as live instead).

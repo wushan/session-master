@@ -10,6 +10,7 @@ struct SessionRowView: View {
     let onVSCode: () -> Void
     var onReveal: (() -> Void)? = nil
     var onRename: ((String?) -> Void)? = nil
+    var onResume: (() -> Void)? = nil
 
     @State private var hovering = false
     @State private var editing = false
@@ -37,6 +38,7 @@ struct SessionRowView: View {
                             Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.tertiary)
                         }
                         sourceBadge
+                        if session.isEnded { resumeChip }
                         if session.isAutomationRun { scheduleBadge("auto", .secondary) }
                         else if session.isRoutineRun { scheduleBadge("routine", .teal) }
                         if subagentCount > 0 { subagentChip }
@@ -59,8 +61,11 @@ struct SessionRowView: View {
             Spacer(minLength: 4)
         }
         .contentShape(Rectangle())
-        .onTapGesture { if session.canRecall { onRecall() } }
-        .pointerCursor(session.canRecall)
+        .onTapGesture {
+            if session.canRecall { onRecall() }
+            else if session.canResume { onResume?() }
+        }
+        .pointerCursor(session.canRecall || session.canResume)
         .padding(.vertical, isChild ? 5 : 8).padding(.horizontal, 8)
         .background(hovering ? Color.primary.opacity(0.06) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -69,7 +74,7 @@ struct SessionRowView: View {
         .saturation(session.isStale && !editing ? 0 : 1)
         .opacity(session.isStale && !hovering && !editing ? 0.5 : 1)
         .onHover { hovering = $0 }
-        .help(session.canRecall ? "Click to recall" : "")
+        .help(session.canRecall ? "Click to recall" : (session.canResume ? "Click to resume in Terminal" : ""))
         .contextMenu {
             Button("Rename…") { draft = session.displayTitle; editing = true }
             if session.rich.customTitle != nil {
@@ -77,6 +82,7 @@ struct SessionRowView: View {
             }
             Divider()
             if session.canRecall { Button("Recall window") { onRecall() } }
+            if session.canResume { Button("Resume in Terminal") { onResume?() } }
             Button("Open in editor") { onVSCode() }
             if let onReveal { Button("Reveal in Finder") { onReveal() } }
         }
@@ -171,6 +177,17 @@ struct SessionRowView: View {
         .clipShape(Capsule())
     }
 
+    /// Marks an ended session — the terminal is gone, but click to resume it in a new Terminal.
+    private var resumeChip: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "arrow.clockwise").font(.system(size: 8, weight: .bold))
+            Text("resume").font(.system(size: 9, weight: .bold))
+        }
+        .padding(.horizontal, 5).padding(.vertical, 1)
+        .background(Color.blue.opacity(0.2)).foregroundStyle(.blue)
+        .clipShape(Capsule())
+    }
+
     private var metaLine: some View {
         HStack(spacing: 6) {
             if let m = session.shortModel { Text(m) }
@@ -213,6 +230,9 @@ struct SessionRowView: View {
                 IconButton(systemName: "pencil", help: "Rename") {
                     draft = session.displayTitle; editing = true
                 }
+            }
+            if session.canResume, let onResume {
+                IconButton(systemName: "arrow.clockwise", help: "Resume in Terminal", action: onResume)
             }
             IconButton(systemName: "chevron.left.forwardslash.chevron.right",
                        help: "Open worktree in editor", action: onVSCode)

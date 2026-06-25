@@ -9,6 +9,7 @@ public struct ClaudeHistory: Sendable {
     public let prNumber: Int?
     public let prURL: String?
     public let contextPercent: Int?
+    public let cwd: String?          // recovered from the transcript (for ended-session resume)
 }
 
 /// Claude CLI sessions only record pid/cwd/name/status in `~/.claude/sessions`. The
@@ -42,8 +43,14 @@ public enum ClaudeHistoryEnricher {
 
     public static func enrich(sessionId: String, cwd: String) -> ClaudeHistory? {
         guard let url = transcriptURL(sessionId: sessionId, cwd: cwd) else { return nil }
-        return cache.value(path: url.path, stamp: fileStamp(url)) {
-            var model: String?, branch: String?, aiTitle: String?, lastPrompt: String?
+        return parse(url)
+    }
+
+    /// Parse a transcript file directly (used both by enrich and for ended-session discovery,
+    /// where we only have the file, not the cwd up front). Cached on the file's mtime+size.
+    public static func parse(_ url: URL) -> ClaudeHistory? {
+        cache.value(path: url.path, stamp: fileStamp(url)) {
+            var model: String?, branch: String?, aiTitle: String?, lastPrompt: String?, cwd: String?
             var prNumber: Int?, prURL: String?, ctxTokens: Int?
             for d in JSONLReader.tailObjects(url).reversed() {
                 let msg = d["message"] as? [String: Any]
@@ -51,6 +58,7 @@ public enum ClaudeHistoryEnricher {
                 // (often the very last record) that must not be shown as the model.
                 if model == nil, let m = msg?["model"] as? String, m.hasPrefix("claude-") { model = m }
                 if branch == nil, let b = d["gitBranch"] as? String, b != "HEAD", !b.isEmpty { branch = b }
+                if cwd == nil, let c = d["cwd"] as? String, !c.isEmpty { cwd = c }
                 if ctxTokens == nil, let u = msg?["usage"] as? [String: Any] {   // latest assistant turn
                     ctxTokens = ((u["input_tokens"] as? Int) ?? 0)
                         + ((u["cache_read_input_tokens"] as? Int) ?? 0)
@@ -66,8 +74,8 @@ public enum ClaudeHistoryEnricher {
             }
             let window = (model ?? "").localizedCaseInsensitiveContains("1m") ? 1_000_000.0 : 200_000.0
             let pct = ctxTokens.map { min(100, Int(Double($0) / window * 100)) }
-            return ClaudeHistory(model: model, branch: branch, aiTitle: aiTitle,
-                                 lastPrompt: lastPrompt, prNumber: prNumber, prURL: prURL, contextPercent: pct)
+            return ClaudeHistory(model: model, branch: branch, aiTitle: aiTitle, lastPrompt: lastPrompt,
+                                 prNumber: prNumber, prURL: prURL, contextPercent: pct, cwd: cwd)
         }
     }
 }
