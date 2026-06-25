@@ -47,6 +47,6 @@ final class AppSettings {
         customEditorCommand = d.string(forKey: "customEditor") ?? ""
         soundEnabled = d.object(forKey: "sound") as? Bool ?? true
         notificationsEnabled = d.object(forKey: "notifications") as? Bool ?? true
-        dashboardAlwaysOnTop = d.object(forKey: "alwaysOnTop") as? Bool ?? false
+        dashboardAlwaysOnTop = d.object(forKey: "alwaysOnTop") as? Bool ?? true
     }
 }
