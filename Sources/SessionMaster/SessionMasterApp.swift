@@ -26,6 +26,16 @@ struct SessionMasterApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = SessionStore()
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Single instance: if another copy (same bundle id) is already running, focus it and quit
+        // so you don't end up with two menu-bar icons.
+        let me = NSRunningApplication.current
+        if let other = NSRunningApplication
+            .runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.sessionmaster.app")
+            .first(where: { $0.processIdentifier != me.processIdentifier }) {
+            other.activate()
+            NSApp.terminate(nil)
+            return
+        }
         NSApp.setActivationPolicy(.accessory)   // menu-bar only, no Dock icon
         store.start()
     }

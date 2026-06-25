@@ -2,6 +2,18 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.9] — 2026-06-25
+
+### Added
+- Dashboard **always-on-top is now the default** (so the session list stays visible) — toggle it off
+  in Config → Dashboard.
+
+### Fixed
+- The dashboard **sidebar no longer sticks half-open** when toggled (driven by an explicit column
+  visibility binding + balanced split style).
+- **Single instance**: launching a second copy now just focuses the running one instead of adding a
+  second menu-bar icon.
+
 ## [0.2.8] — 2026-06-25
 
 ### Fixed
