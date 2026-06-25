@@ -52,7 +52,8 @@ puts it in one place, with one-click recall.
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.
 - **Dashboard** with Project / Recent sort, source filter, and search; **Config** and **About**
   (version + one-click *Update via Homebrew*) tabs. Open it and a Dock icon appears so you can
-  minimize it like any window; close it and the app drops back to menu-bar only.
+  minimize it like any window; close it and the app drops back to menu-bar only. Optionally
+  **keep it always on top** so the session list stays visible behind your work.
 - **Launch at login**, menu-bar only — with a **configurable menu-bar icon**.
 
 <p align="center">

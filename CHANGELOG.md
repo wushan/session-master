@@ -2,6 +2,36 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.5] — 2026-06-25
+
+A three-way code review (a multi-agent pass + Codex + a manual pass) drove a batch of correctness,
+robustness, and security fixes.
+
+### Added
+- **Keep dashboard always on top** (Config → Dashboard) — floats the dashboard above other apps so
+  the session list stays visible behind whatever you're working in.
+
+### Security
+- The **custom-editor command no longer runs the session path through a shell**, closing a
+  command-injection vector — a directory recorded as `/tmp/$(…)` could otherwise run arbitrary
+  commands when you clicked *Open in editor* with a custom command.
+
+### Fixed
+- **Recall:** CLI sessions under **tmux / SSH / an unrecognized terminal** are no longer mislabeled
+  as Desktop (recall now takes the right path); App Exposé only fires once the terminal is actually
+  frontmost; an exact window-title match is preferred over a loose substring.
+- **Codex companions** spawned by a Claude session now nest under it even when that session's branch
+  is unknown (its transcript can record `HEAD` instead of the branch name).
+- **No stalls/deadlocks:** a chatty or hung subprocess can't deadlock or permanently stall the 2s
+  poll (stderr drained, watchdog timeout, refresh grace-period); `git`/`gh` state refreshes after a
+  fetch / PR-merge; a transient `gh` failure is no longer cached as "no PR" for 5 minutes.
+- **No crashes/leaks:** duplicate session ids are de-duplicated (SwiftUI `Identifiable`); the hover
+  cursor no longer leaks; the dashboard can't be stranded without a Dock icon; recall and
+  editor-open run off the main thread (no UI hitch).
+- **Parsing:** RRULE next-run respects `BYHOUR`/`INTERVAL`; TOML arrays keep commas inside quoted
+  paths; caches are bounded and can't clobber fresher data; `Xcode` is no longer misdetected as the
+  "VS Code" terminal.
+
 ## [0.2.4] — 2026-06-25
 
 ### Fixed
