@@ -244,6 +244,7 @@ public enum SessionAggregator {
     /// only while recently active, deduped to the latest per project so the list stays clean.
     static func filterCodex(_ sessions: [CodexSession]) -> [CodexSession] {
         var latestAutomation: [String: CodexSession] = [:]
+        var latestExec: [String: CodexSession] = [:]
         var out: [CodexSession] = []
         for c in sessions {
             switch c.threadSource {
@@ -254,10 +255,19 @@ public enum SessionAggregator {
                 if let prev = latestAutomation[key], prev.mtime >= c.mtime { continue }
                 latestAutomation[key] = c
             default:
-                out.append(c)
+                // Each `codex exec` invocation writes a fresh rollout, so repeated runs pile up on
+                // the same worktree. Keep only the latest per (cwd, branch); SessionTree then nests
+                // it under the driving Claude session.
+                if c.originator == "codex_exec" {
+                    let key = c.cwd + "\u{1}" + (c.branch ?? "")
+                    if let prev = latestExec[key], prev.mtime >= c.mtime { continue }
+                    latestExec[key] = c
+                } else {
+                    out.append(c)
+                }
             }
         }
-        return out + latestAutomation.values
+        return out + latestAutomation.values + latestExec.values
     }
 
     static func unified(from c: CodexSession) -> UnifiedSession {

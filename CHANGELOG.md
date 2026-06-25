@@ -2,6 +2,13 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.2.8] — 2026-06-25
+
+### Fixed
+- **`codex exec` runs no longer flood the top level.** Repeated `codex exec` invocations on the same
+  worktree are deduplicated to the latest, and runs a Claude session kicked off now nest under it
+  (like its companions) instead of stacking up as separate top-level sessions.
+
 ## [0.2.7] — 2026-06-25
 
 ### Notes
