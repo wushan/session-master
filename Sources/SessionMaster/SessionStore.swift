@@ -23,6 +23,7 @@ final class SessionStore {
 
     private var timer: Timer?
     private var refreshing = false
+    private var refreshStartedAt: Date?
     private var prevAttention: [String: UnifiedSession.Attention] = [:]
     private var notifyArmed = false
     private let settings = AppSettings.shared
@@ -37,13 +38,17 @@ final class SessionStore {
     }
 
     func refresh() {
-        guard !refreshing else { return }
+        // Skip only while a refresh is genuinely in flight. If a prior one wedged (a hung
+        // subprocess despite Shell's timeout, an unexpected error), let a new one through after a
+        // grace period so polling can never stop permanently.
+        if refreshing, let started = refreshStartedAt, Date().timeIntervalSince(started) < 20 { return }
         refreshing = true
-        Task.detached(priority: .utility) { [weak self] in
+        refreshStartedAt = Date()
+        Task.detached(priority: .utility) {
             let snap = SessionAggregator.snapshot()
             let jobs = ScheduleAggregator.all()
             let trusted = Recaller.accessibilityTrusted()
-            await MainActor.run {
+            await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.sessions = snap.sessions
                 self.subagentChildren = snap.subagents
@@ -84,26 +89,34 @@ final class SessionStore {
     var needsYouCount: Int { needsApprovalCount + awaitingYouCount }
 
     func recall(_ s: UnifiedSession) {
-        let outcome: RecallOutcome
-        switch s.source {
-        case .claudeDesktop:
-            AppActivator.bringToFront(appNamed: "Claude"); outcome = .foregroundedApp("Claude")
-        case .codexDesktop:
-            // Codex registers codex://threads/<id> — navigate straight to the conversation.
-            AppActivator.openDeeplink("codex://threads/\(s.id)"); outcome = .foregroundedApp("Codex")
-        case .codexCLI:
-            if s.terminal.terminalPID != nil {
+        // Recall does subprocess (osascript/tmux), Accessibility, and a frontmost-wait — all of
+        // which can take 100s of ms. Run it off the main thread so the UI never hitches, then hop
+        // back to update the status line.
+        Task.detached(priority: .userInitiated) {
+            let outcome: RecallOutcome
+            switch s.source {
+            case .claudeDesktop:
+                AppActivator.bringToFront(appNamed: "Claude"); outcome = .foregroundedApp("Claude")
+            case .codexDesktop:
+                // Codex registers codex://threads/<id> — navigate straight to the conversation.
+                AppActivator.openDeeplink("codex://threads/\(s.id)"); outcome = .foregroundedApp("Codex")
+            case .codexCLI:
+                if s.terminal.terminalPID != nil || s.terminal.viaTmux {
+                    outcome = Recaller.recall(s.recallTarget)
+                } else if s.originator == "VSCode" {
+                    AppActivator.bringToFront(appNamed: "Visual Studio Code"); outcome = .foregroundedApp("VS Code")
+                } else {
+                    AppActivator.bringToFront(appNamed: "Codex"); outcome = .foregroundedApp("Codex")
+                }
+            case .claudeCLI:
                 outcome = Recaller.recall(s.recallTarget)
-            } else if s.originator == "VSCode" {
-                AppActivator.bringToFront(appNamed: "Visual Studio Code"); outcome = .foregroundedApp("VS Code")
-            } else {
-                AppActivator.bringToFront(appNamed: "Codex"); outcome = .foregroundedApp("Codex")
             }
-        case .claudeCLI:
-            outcome = Recaller.recall(s.recallTarget)
-            if case .needsAccessibility = outcome { requestAccessibility() }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.lastRecallMessage = self.describe(outcome, for: s)
+                if case .needsAccessibility = outcome { self.requestAccessibility() }
+            }
         }
-        lastRecallMessage = describe(outcome, for: s)
     }
 
     /// Resolve the session's real worktree (feature-branch worktree, not the repo root).
@@ -113,8 +126,12 @@ final class SessionStore {
     func openInVSCode(_ s: UnifiedSession) { openInEditor(effectivePath(s)) }
     func openInVSCode(path: String) { openInEditor(path) }
     private func openInEditor(_ path: String) {
-        EditorOpener.open(path: path, appName: settings.editor.appName,
-                          customCommand: settings.editor == .custom ? settings.customEditorCommand : nil)
+        // Read settings on the main actor, then launch off it (the editor command may block).
+        let appName = settings.editor.appName
+        let custom = settings.editor == .custom ? settings.customEditorCommand : nil
+        Task.detached(priority: .userInitiated) {
+            EditorOpener.open(path: path, appName: appName, customCommand: custom)
+        }
     }
     func revealInFinder(_ s: UnifiedSession) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: effectivePath(s))])

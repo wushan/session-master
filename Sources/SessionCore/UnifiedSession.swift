@@ -84,6 +84,14 @@ public struct UnifiedSession: Identifiable, Sendable {
         }
         return (cwd as NSString).lastPathComponent
     }
+    /// Full path to the project root (worktree suffix stripped). Unlike `projectName` (a basename
+    /// for display grouping), this is collision-free across repos that share a folder name.
+    public var projectRoot: String {
+        for marker in ["/.claude/worktrees/", "/.codex/worktrees/"] {
+            if let r = cwd.range(of: marker) { return String(cwd[..<r.lowerBound]) }
+        }
+        return cwd
+    }
     public var isWorktree: Bool {
         worktreeName != nil || cwd.contains("/.claude/worktrees/") || cwd.contains("/.codex/worktrees/")
     }
@@ -140,6 +148,9 @@ public enum SessionAggregator {
         }
 
         var sessions = claude + codex + desktop
+        // Belt-and-suspenders: never emit two sessions sharing an id (SwiftUI Identifiable).
+        var seenIds = Set<String>()
+        sessions = sessions.filter { seenIds.insert($0.id).inserted }
         for i in sessions.indices {
             let s = sessions[i]
             sessions[i].rich.customTitle = CustomTitles.get(s.id)
@@ -157,15 +168,20 @@ public enum SessionAggregator {
 
     /// Saved Claude Desktop sessions that aren't currently live (those show as live instead).
     static func desktopStandalone(excluding liveIds: Set<String>) -> [UnifiedSession] {
-        ClaudeDesktopCollector.sessions().compactMap { d in
-            guard let cli = d.cliSessionId, !liveIds.contains(cli) else { return nil }
-            guard let cwd = d.cwd ?? d.worktreePath, !cwd.isEmpty else { return nil }
-            return UnifiedSession(
+        var seen = liveIds
+        var out: [UnifiedSession] = []
+        for d in ClaudeDesktopCollector.sessions() {
+            // Skip live sessions and any duplicate cliSessionId — two sessions with the same id
+            // crash SwiftUI's ForEach (Identifiable must be unique).
+            guard let cli = d.cliSessionId, seen.insert(cli).inserted else { continue }
+            guard let cwd = d.cwd ?? d.worktreePath, !cwd.isEmpty else { continue }
+            out.append(UnifiedSession(
                 id: cli, source: .claudeDesktop, pid: nil, cwd: cwd, name: nil, title: d.title,
                 model: d.model, effort: d.effort, branch: d.branch, worktreeName: d.worktreeName,
                 originator: nil, status: .idle, waitingFor: nil, terminal: .dead,
-                updatedAt: d.lastActivityAt, scheduledTaskId: d.scheduledTaskId)
+                updatedAt: d.lastActivityAt, scheduledTaskId: d.scheduledTaskId))
         }
+        return out
     }
 
     /// Convenience: the full parent→child tree (companions + sub-agents).
@@ -183,7 +199,11 @@ public enum SessionAggregator {
 
         return live.map { s in
             let t = terms[s.pid] ?? .dead
-            let isCLI = t.terminalApp != nil
+            // A live session with a controlling tty (or tmux, or a recognized terminal) is a CLI
+            // session — Claude Desktop's claude-code subprocess has no controlling tty. This stops
+            // tmux / SSH / unrecognized-terminal CLI sessions being mislabeled Desktop (which sent
+            // recall down the useless "bring Claude.app to front" path instead of tmux/AX).
+            let isCLI = t.terminalApp != nil || t.viaTmux || t.tty != nil
             var model: String?, effort: String?, branch: String?, title: String?, worktree: String?
             var scheduledTaskId: String?
 

@@ -16,14 +16,14 @@ public enum SessionTree {
                              extraChildren: [String: [UnifiedSession]] = [:]) -> [SessionNode] {
         var claudeByKey: [String: UnifiedSession] = [:]
         for s in sessions where s.source.isClaude {
-            if let b = s.branch, !b.isEmpty { claudeByKey[key(s.projectName, b)] = s }
+            if let b = s.branch, !b.isEmpty { claudeByKey[key(s.projectRoot, b)] = s }
         }
 
         var childrenOf = extraChildren
         var claimed = Set<String>()
         for s in sessions where s.source.isCodex && s.originator == "Claude Code" {
             guard let b = s.branch, !b.isEmpty,
-                  let parent = claudeByKey[key(s.projectName, b)] else { continue }
+                  let parent = claudeByKey[key(s.projectRoot, b)] else { continue }
             childrenOf[parent.id, default: []].append(s)
             claimed.insert(s.id)
         }

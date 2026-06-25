@@ -34,14 +34,32 @@ public enum PRStatus {
     }
 
     static func scheduleFetch(_ slug: String) {
-        lock.lock()
-        if inflight.contains(slug) { lock.unlock(); return }
-        inflight.insert(slug); lock.unlock()
+        guard claimInflight(slug) else { return }
         Task.detached(priority: .utility) {
             let map = fetch(slug)
-            lock.lock(); repoCache[slug] = (Date(), map ?? repoCache[slug]?.map ?? [:])
-            inflight.remove(slug); lock.unlock()
+            storeResult(slug, map)
         }
+    }
+
+    /// Returns true if this caller now owns the in-flight fetch for `slug` (sync — keeps NSLock
+    /// out of the async closure, which Swift 6 forbids).
+    private static func claimInflight(_ slug: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if inflight.contains(slug) { return false }
+        inflight.insert(slug); return true
+    }
+
+    private static func storeResult(_ slug: String, _ map: [String: PRInfo]?) {
+        lock.lock(); defer { lock.unlock() }
+        if let map {
+            repoCache[slug] = (Date(), map)                       // success → fresh for the full TTL
+        } else if repoCache[slug] != nil {
+            // Failure: short backoff (retry ~30s) instead of locking out for the full 5 min, while
+            // keeping whatever good data we already had — don't surface a transient gh hiccup as "no PR".
+            let keep = repoCache[slug]?.map ?? [:]
+            repoCache[slug] = (Date().addingTimeInterval(-(ttl - 30)), keep)
+        }
+        inflight.remove(slug)
     }
 
     static func fetch(_ slug: String) -> [String: PRInfo]? {
