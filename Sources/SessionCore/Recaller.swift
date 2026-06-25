@@ -91,7 +91,11 @@ public enum Recaller {
             // the one to recall — macOS then switches to its desktop cleanly.
             if !Spaces.hiddenWindowIDs(ofPID: tp).isEmpty {
                 NSRunningApplication(processIdentifier: tp)?.activate()
-                usleep(120_000)   // let the app come forward before App Exposé
+                // App Exposé acts on the *front* app, so wait until the terminal is actually
+                // frontmost before firing it — otherwise the first recall does nothing.
+                for _ in 0..<15 where NSWorkspace.shared.frontmostApplication?.processIdentifier != tp {
+                    usleep(20_000)   // up to ~300ms
+                }
                 if Spaces.appExpose(), let name = a.terminalApp { return .exposedWindows(name) }
             }
             NSRunningApplication(processIdentifier: tp)?.activate()
@@ -101,11 +105,9 @@ public enum Recaller {
         return .notFound
     }
 
-    /// Focus a specific window and bring its app forward. Prefers the SkyLight per-window focus
-    /// (clean across Spaces — no app-activate that would drag the window or revert a Space switch);
-    /// falls back to plain AX raise + app activate if that SPI is unavailable.
+    /// Raise a window above the others on its Space and bring its app forward (so it gets focus
+    /// even when it was buried behind other windows on the current desktop).
     static func focusWindow(_ window: AXUIElement, appPID tp: pid_t) {
-        if let wid = Spaces.windowID(of: window), Spaces.focusWindowID(wid, pid: tp) { return }
         AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         AXUIElementSetAttributeValue(AXUIElementCreateApplication(tp),
