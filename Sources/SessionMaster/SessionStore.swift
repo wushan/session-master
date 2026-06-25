@@ -17,9 +17,6 @@ final class SessionStore {
     private(set) var hasLoaded = false           // first poll done? (loading vs empty)
     var selectedTab: DashboardTab = .sessions    // which dashboard tab is shown
     var lastRecallMessage: String?
-    /// Set by the menu-bar content (which owns SwiftUI's openWindow) so any view can open the
-    /// dashboard to a given tab.
-    @ObservationIgnored var openDashboard: ((DashboardTab) -> Void)?
 
     private var timer: Timer?
     private var refreshing = false

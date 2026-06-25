@@ -19,14 +19,26 @@ struct TimelineDot: View {
 }
 
 /// Resolves the NSWindow hosting a SwiftUI view — used to dismiss the menu-bar popover on demand.
+/// Resolves on both make and update (the view may not be in a window yet at make time), but only
+/// reports an *actual* change via the Coordinator so it can't loop on @State writes.
 struct WindowAccessor: NSViewRepresentable {
     let onResolve: (NSWindow?) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> NSView {
         let v = NSView()
-        DispatchQueue.main.async { onResolve(v.window) }
+        DispatchQueue.main.async { context.coordinator.update(v.window, onResolve) }
         return v
     }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { context.coordinator.update(nsView.window, onResolve) }
+    }
+    final class Coordinator {
+        private weak var last: NSWindow?
+        func update(_ w: NSWindow?, _ cb: (NSWindow?) -> Void) {
+            guard w !== last else { return }
+            last = w; cb(w)
+        }
+    }
 }
 
 /// Shows the pointing-hand cursor on hover (SwiftUI buttons don't by default on macOS 14).
@@ -39,6 +51,9 @@ struct PointerCursor: ViewModifier {
             if want && !pushed { NSCursor.pointingHand.push(); pushed = true }
             else if !want && pushed { NSCursor.pop(); pushed = false }
         }
+        // If the view goes away while hovered, pop the pushed cursor — otherwise it leaks on the
+        // NSCursor stack and the pointing hand can get stuck.
+        .onDisappear { if pushed { NSCursor.pop(); pushed = false } }
     }
 }
 

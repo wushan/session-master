@@ -65,13 +65,6 @@ struct MenuContentView: View {
         }
         .frame(width: 380)
         .background(WindowAccessor { popoverWindow = $0 })
-        .onAppear {
-            store.openDashboard = { tab in
-                store.selectedTab = tab
-                openWindow(id: "main")
-                NSApp.activate(ignoringOtherApps: true)
-            }
-        }
     }
 
     private var searchBar: some View {

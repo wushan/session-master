@@ -50,9 +50,17 @@ struct MainWindowView: View {
         .background(.background)
         // Menu-bar apps (.accessory) have no Dock tile, so a minimized window vanishes with no
         // way back. While the dashboard is open, become a regular app so it gets a Dock icon and
-        // minimize works; drop back to menu-bar-only when the window closes.
+        // minimize works; drop back to menu-bar-only only once it's really gone — deferred + guarded
+        // so closing-then-reopening (or a stray disappear) can't strand the app without a Dock icon.
         .onAppear { NSApp.setActivationPolicy(.regular) }
-        .onDisappear { NSApp.setActivationPolicy(.accessory) }
+        .onDisappear {
+            DispatchQueue.main.async {
+                let stillOpen = NSApp.windows.contains {
+                    $0.title == "SessionMaster" && ($0.isVisible || $0.isMiniaturized)
+                }
+                if !stillOpen { NSApp.setActivationPolicy(.accessory) }
+            }
+        }
     }
 
     // MARK: Session controls (filter / sort / search — the tabs live in the sidebar now)
