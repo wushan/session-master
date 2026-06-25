@@ -35,6 +35,11 @@ struct ConfigView: View {
                 Text("Fires when a session finishes its turn (your turn) or hits a permission prompt.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("Dashboard") {
+                Toggle("Keep dashboard always on top", isOn: $settings.dashboardAlwaysOnTop)
+                Text("Floats the dashboard window above other apps so the session list stays visible.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Startup") {
                 Toggle("⚡ Launch at login", isOn: Binding(
                     get: { store.launchAtLogin }, set: { _ in store.toggleLaunchAtLogin() }))

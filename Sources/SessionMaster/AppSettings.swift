@@ -37,6 +37,8 @@ final class AppSettings {
     var customEditorCommand: String { didSet { d.set(customEditorCommand, forKey: "customEditor") } }
     var soundEnabled: Bool { didSet { d.set(soundEnabled, forKey: "sound") } }
     var notificationsEnabled: Bool { didSet { d.set(notificationsEnabled, forKey: "notifications") } }
+    /// Keep the dashboard window floating above other apps' windows so the session list stays visible.
+    var dashboardAlwaysOnTop: Bool { didSet { d.set(dashboardAlwaysOnTop, forKey: "alwaysOnTop") } }
 
     private let d = UserDefaults.standard
     private init() {
@@ -45,5 +47,6 @@ final class AppSettings {
         customEditorCommand = d.string(forKey: "customEditor") ?? ""
         soundEnabled = d.object(forKey: "sound") as? Bool ?? true
         notificationsEnabled = d.object(forKey: "notifications") as? Bool ?? true
+        dashboardAlwaysOnTop = d.object(forKey: "alwaysOnTop") as? Bool ?? false
     }
 }

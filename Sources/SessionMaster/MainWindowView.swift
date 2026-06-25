@@ -25,6 +25,8 @@ struct MainWindowView: View {
     @State private var search = ""
     @State private var expandedNodes: Set<String> = []
     @State private var expandedProjects: Set<String> = []
+    @State private var settings = AppSettings.shared
+    @State private var window: NSWindow?
     private let perProjectLimit = 5
 
     var body: some View {
@@ -48,6 +50,8 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 720, minHeight: 460)
         .background(.background)
+        .background(WindowAccessor { window = $0; applyAlwaysOnTop() })
+        .onChange(of: settings.dashboardAlwaysOnTop) { applyAlwaysOnTop() }
         // Menu-bar apps (.accessory) have no Dock tile, so a minimized window vanishes with no
         // way back. While the dashboard is open, become a regular app so it gets a Dock icon and
         // minimize works; drop back to menu-bar-only only once it's really gone — deferred + guarded
@@ -61,6 +65,12 @@ struct MainWindowView: View {
                 if !stillOpen { NSApp.setActivationPolicy(.accessory) }
             }
         }
+    }
+
+    /// Float the dashboard above other apps' windows (so the session list stays visible) when the
+    /// preference is on; back to normal when off.
+    private func applyAlwaysOnTop() {
+        window?.level = settings.dashboardAlwaysOnTop ? .floating : .normal
     }
 
     // MARK: Session controls (filter / sort / search — the tabs live in the sidebar now)

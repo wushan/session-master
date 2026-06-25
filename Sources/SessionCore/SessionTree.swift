@@ -15,15 +15,22 @@ public enum SessionTree {
     public static func build(_ sessions: [UnifiedSession],
                              extraChildren: [String: [UnifiedSession]] = [:]) -> [SessionNode] {
         var claudeByKey: [String: UnifiedSession] = [:]
+        var claudeByRoot: [String: [UnifiedSession]] = [:]
         for s in sessions where s.source.isClaude {
+            claudeByRoot[s.projectRoot, default: []].append(s)
             if let b = s.branch, !b.isEmpty { claudeByKey[key(s.projectRoot, b)] = s }
         }
 
         var childrenOf = extraChildren
         var claimed = Set<String>()
         for s in sessions where s.source.isCodex && s.originator == "Claude Code" {
-            guard let b = s.branch, !b.isEmpty,
-                  let parent = claudeByKey[key(s.projectRoot, b)] else { continue }
+            guard let b = s.branch, !b.isEmpty else { continue }
+            // Prefer an exact project+branch match. If none (e.g. the Claude session's branch is
+            // unknown — its transcript can record "HEAD"), fall back to the *only* Claude session
+            // in that project root.
+            let root = claudeByRoot[s.projectRoot]
+            guard let parent = claudeByKey[key(s.projectRoot, b)]
+                    ?? (root?.count == 1 ? root?.first : nil) else { continue }
             childrenOf[parent.id, default: []].append(s)
             claimed.insert(s.id)
         }
