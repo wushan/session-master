@@ -92,11 +92,13 @@ public enum Recaller {
             if !Spaces.hiddenWindowIDs(ofPID: tp).isEmpty {
                 NSRunningApplication(processIdentifier: tp)?.activate()
                 // App Exposé acts on the *front* app, so wait until the terminal is actually
-                // frontmost before firing it — otherwise the first recall does nothing.
-                for _ in 0..<15 where NSWorkspace.shared.frontmostApplication?.processIdentifier != tp {
-                    usleep(20_000)   // up to ~300ms
+                // frontmost — and only fire it if it got there, otherwise we'd Exposé the wrong app.
+                var frontmost = false
+                for _ in 0..<15 {                                    // up to ~300ms
+                    if NSWorkspace.shared.frontmostApplication?.processIdentifier == tp { frontmost = true; break }
+                    usleep(20_000)
                 }
-                if Spaces.appExpose(), let name = a.terminalApp { return .exposedWindows(name) }
+                if frontmost, Spaces.appExpose(), let name = a.terminalApp { return .exposedWindows(name) }
             }
             NSRunningApplication(processIdentifier: tp)?.activate()
             // Last resort: just brought the terminal app forward (can't target the exact window).
