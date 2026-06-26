@@ -179,6 +179,12 @@ public enum SessionAggregator {
             let subs = CodexSubagentScanner.scan(rollout: c.url)
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
         }
+        // Claude Task sub-agents live as files under <project>/<sessionId>/subagents/ — scan the
+        // live Claude sessions (json-live + argv-resumed) so they nest under their parent too.
+        for p in (claude + resumed) {
+            let subs = ClaudeSubagentScanner.scan(sessionId: p.id, cwd: p.cwd)
+            if !subs.isEmpty { subagents[p.id] = subs.map { subagentSession($0, parent: p) } }
+        }
         // Recently-ended Claude CLI sessions (terminal closed) — resumable, not currently shown.
         let shownIds = Set((claude + resumed + desktop).map(\.id))
         let ended = ClaudeEndedCollector.recent(excluding: shownIds).compactMap(endedSession(from:))
@@ -380,6 +386,17 @@ public enum SessionAggregator {
             model: nil, effort: nil, branch: c.branch, worktreeName: nil,
             originator: "subagent",
             status: .idle, waitingFor: nil, terminal: .dead, updatedAt: nil)
+    }
+
+    /// A Claude sub-agent (Task tool) shown as a child row under its parent session.
+    static func subagentSession(_ s: ClaudeSubagent, parent p: UnifiedSession) -> UnifiedSession {
+        UnifiedSession(
+            id: s.id,
+            source: .claudeCLI,
+            pid: nil, cwd: p.cwd, name: s.description.isEmpty ? s.agentType : s.description,
+            title: nil, model: nil, effort: nil, branch: p.branch, worktreeName: p.worktreeName,
+            originator: "subagent",
+            status: .idle, waitingFor: nil, terminal: .dead, updatedAt: s.updatedAt)
     }
 
     /// Codex has no status field; approximate from how recently the rollout was written.
