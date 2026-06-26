@@ -83,6 +83,9 @@ struct MainWindowView: View {
             f.size.width = 430
             window.setFrame(f, display: true, animate: false)
         }
+        // AppKit makes the first text field (the Filter box) the window's first responder when it
+        // opens — drop that so the dashboard doesn't open with the search field focused.
+        DispatchQueue.main.async { window.makeFirstResponder(nil) }
     }
 
     // MARK: Tab bar (Tailscale-style: icon over label, the selected one highlighted)

@@ -2,6 +2,13 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.4] — 2026-06-26
+
+### Fixed
+- **The dashboard no longer opens with the Filter search field focused.** AppKit made the search box
+  the window's first responder on open, which stole keyboard focus and collapsed the source filter /
+  Sort controls; the window now opens ready to browse, with those controls visible.
+
 ## [0.3.3] — 2026-06-26
 
 ### Fixed
