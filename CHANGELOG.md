@@ -2,6 +2,27 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.1] — 2026-06-26
+
+### Changed
+- **The dashboard tabs moved from a sidebar to a compact top tab bar** (icon over label, the
+  selected one highlighted) — Sessions, Automations, Config, About — with **Refresh** beside them.
+  About flags an available update with a small dot, and the window opens narrower without a sidebar
+  column.
+- **The source filter collapses to a single pill** ("All") that expands to All / Claude / Codex on
+  tap and snaps back after a pick, **Project/Recent fold into one "Sort" menu**, and the **search
+  field expands to full width on focus** — all to save room in the narrow window.
+- **Larger, more readable text** throughout the Sessions and Automations rows.
+- The continuous Recent timeline rail is **trimmed to start at the first dot and end at the last**
+  (no overhang above the top dot or tail below the bottom one).
+
+### Fixed
+- **A session resumed in a terminal is now detected as live.** Running `claude --resume <id>` on a
+  Claude Desktop conversation writes no live-state file, so it used to surface as a stale, grayed,
+  days-old idle row sorted to the bottom — even while actively running. SessionMaster now recovers
+  the running session from the process's arguments and the transcript's modification time, showing
+  it as a live, recallable CLI session at the top.
+
 ## [0.3.0] — 2026-06-25
 
 ### Added
