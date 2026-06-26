@@ -2,6 +2,16 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.2] — 2026-06-26
+
+### Added
+- **A Claude session now nests its running Task sub-agents and in-progress dynamic workflows.**
+  Sub-agents (Task tool) and Workflow runs are read from the session's own files; only the ones
+  *currently running* are shown as compact child lines — a sub-agent while its transcript is still
+  being written, a workflow while it has started but not yet completed. Finished sub-agents and
+  completed workflows drop off, so the list stays focused on live work. (Previously only Codex
+  companions nested; Claude-native sub-agents and workflows were never surfaced.)
+
 ## [0.3.1] — 2026-06-26
 
 ### Changed
