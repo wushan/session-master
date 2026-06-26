@@ -1,4 +1,5 @@
 import Darwin
+import Foundation
 
 /// Terminal ownership for a given process, discovered by walking the parent chain.
 /// Driven by a pid from a session file — NOT by scanning process names, because the
@@ -140,5 +141,59 @@ public enum ProcessCollector {
 
     public static func isAlive(_ pid: pid_t) -> Bool {
         kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    // MARK: - argv-based resume detection
+
+    /// A live `claude --resume <id>` CLI process recovered from argv.
+    public struct ResumeProcess: Sendable {
+        public let pid: pid_t
+        public let sessionId: String
+    }
+
+    /// Read a process's full argv via `KERN_PROCARGS2`. nil if not available/permitted.
+    /// Layout: `int argc`, `exec_path\0`, NUL padding, then `argv[0]\0 argv[1]\0 …`.
+    static func args(of pid: pid_t) -> [String]? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var buf = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0 else { return nil }
+        var argc: Int32 = 0
+        withUnsafeMutableBytes(of: &argc) { $0.copyBytes(from: buf[0..<MemoryLayout<Int32>.size]) }
+        var i = MemoryLayout<Int32>.size
+        while i < size, buf[i] != 0 { i += 1 }   // skip exec_path
+        while i < size, buf[i] == 0 { i += 1 }    // skip padding NULs before argv[0]
+        var args: [String] = []
+        var cur = [UInt8]()
+        while i < size, args.count < Int(argc) {
+            let b = buf[i]; i += 1
+            if b == 0 { args.append(String(decoding: cur, as: UTF8.self)); cur.removeAll(keepingCapacity: true) }
+            else { cur.append(b) }
+        }
+        return args
+    }
+
+    /// Find live `claude --resume <id>` processes. The CLI does not always write
+    /// `~/.claude/sessions/{pid}.json` (notably when resuming a Desktop-origin session in a
+    /// terminal), so the live-state files miss them; reading argv recovers the session id + pid.
+    public static func claudeResumeProcesses() -> [ResumeProcess] {
+        var out: [ResumeProcess] = []
+        for rec in snapshot() {
+            // Cheap candidate filter before reading argv: claude either keeps p_comm "claude" or
+            // renames it to its version string ("2.1.193", starts with a digit). Skip the rest.
+            guard rec.comm.lowercased() == "claude" || (rec.comm.first?.isNumber ?? false) else { continue }
+            // The CLI emits the space form `--resume <id>` / `-r <id>` (not `--resume=<id>`), so a
+            // plain index-of + next-arg lookup is sufficient. A bare positional UUID is treated by
+            // the CLI as a prompt, not a resume, so it is intentionally not matched.
+            guard let argv = args(of: rec.pid), let exe = argv.first,
+                  exe.split(separator: "/").last?.lowercased().hasPrefix("claude") ?? false,
+                  let r = argv.firstIndex(where: { $0 == "--resume" || $0 == "-r" }),
+                  r + 1 < argv.count else { continue }
+            let id = argv[r + 1]
+            guard id.count == 36, UUID(uuidString: id) != nil else { continue }
+            out.append(ResumeProcess(pid: rec.pid, sessionId: id))
+        }
+        return out
     }
 }

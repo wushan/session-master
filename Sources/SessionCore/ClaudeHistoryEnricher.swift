@@ -39,6 +39,16 @@ public enum ClaudeHistoryEnricher {
         return nil
     }
 
+    /// The transcript's last-modified time — a cheap activity signal (it is appended on every
+    /// turn). Used to override a Desktop session's frozen `lastActivityAt` and to infer liveness
+    /// for argv-detected resumes. Only checks the direct encoded path (no dir scan) so it stays
+    /// cheap to call per session each poll.
+    public static func transcriptMtime(sessionId: String, cwd: String) -> Date? {
+        let direct = projectsDir.appendingPathComponent(encode(cwd: cwd))
+            .appendingPathComponent("\(sessionId).jsonl")
+        return (try? FileManager.default.attributesOfItem(atPath: direct.path))?[.modificationDate] as? Date
+    }
+
     static let cache = FileCache<ClaudeHistory>()
 
     public static func enrich(sessionId: String, cwd: String) -> ClaudeHistory? {
