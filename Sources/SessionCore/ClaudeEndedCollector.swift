@@ -40,11 +40,24 @@ public enum ClaudeEndedCollector {
         let cutoff = Date().addingTimeInterval(-within)
         var found: [(sid: String, url: URL, m: Date)] = []
         if let en = fm.enumerator(at: ClaudeHistoryEnricher.projectsDir,
-                includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles]) {
-            for case let url as URL in en where url.pathExtension == "jsonl" {
+                includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]) {
+            for case let url as URL in en {
+                // Don't descend into a session's per-session subdirs: `subagents/agent-*.jsonl`
+                // (Task sub-agents) and `workflows/` aren't resumable top-level sessions and would
+                // otherwise surface as phantom "ended" rows (e.g. `claude --resume agent-…`).
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                    let n = url.lastPathComponent
+                    if n == "subagents" || n == "workflows" { en.skipDescendants() }
+                    continue
+                }
+                guard url.pathExtension == "jsonl" else { continue }
+                // A real session transcript is named <UUID>.jsonl; sub-agent files are agent-<hex>.
+                let sid = url.deletingPathExtension().lastPathComponent
+                guard UUID(uuidString: sid) != nil else { continue }
                 guard let m = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                         .contentModificationDate, m >= cutoff else { continue }
-                found.append((url.deletingPathExtension().lastPathComponent, url, m))
+                found.append((sid, url, m))
             }
         }
         found.sort { $0.m > $1.m }
