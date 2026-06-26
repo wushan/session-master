@@ -33,16 +33,16 @@ struct SessionRowView: View {
                 HStack(spacing: 6) {
                     if editing {
                         TextField("Title", text: $draft)
-                            .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 12 : 13))
+                            .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 13 : 14))
                             .frame(maxWidth: 220).focused($titleFocused)
                             .onAppear { titleFocused = true }
                             .onSubmit { onRename?(draft); editing = false }
                             .onExitCommand { editing = false }
                     } else {
                         Text(session.displayTitle)
-                            .font(.system(size: isChild ? 12 : 13, weight: .medium)).lineLimit(1)
+                            .font(.system(size: isChild ? 13 : 14, weight: .medium)).lineLimit(1)
                         if session.rich.customTitle != nil {
-                            Image(systemName: "pencil").font(.system(size: 8)).foregroundStyle(.tertiary)
+                            Image(systemName: "pencil").font(.system(size: 9)).foregroundStyle(.tertiary)
                         }
                         sourceBadge
                         if session.isEnded { resumeChip }
@@ -54,15 +54,15 @@ struct SessionRowView: View {
                 }
                 metaLine
                 HStack(spacing: 6) {
-                    if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 9)) }
-                    Text(branchOrPath).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                    if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 10)) }
+                    Text(branchOrPath).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
                     gitChips
                 }
                 if let sub = session.subtitle, !sub.isEmpty {
-                    Text(sub).font(.caption2).foregroundStyle(.secondary).lineLimit(1).italic()
+                    Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1).italic()
                 }
                 if session.attention == .needsApproval, let w = session.waitingFor {
-                    Text("⏳ \(w)").font(.caption2).foregroundStyle(.red).lineLimit(1)
+                    Text("⏳ \(w)").font(.caption).foregroundStyle(.red).lineLimit(1)
                 }
             }
             .padding(.vertical, rowVPad)
@@ -107,7 +107,7 @@ struct SessionRowView: View {
                 .padding(.top, 4).help(session.attention.label)
         } else {
             HStack(alignment: .top, spacing: 5) {
-                Text(relativeAge ?? "").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text(relativeAge ?? "").font(.system(size: 11)).foregroundStyle(.tertiary)
                     .frame(width: 28, alignment: .trailing).padding(.top, rowVPad)
                 ZStack(alignment: .top) {
                     railLine
@@ -136,7 +136,7 @@ struct SessionRowView: View {
 
     private var sourceBadge: some View {
         Text(session.source.isCodex ? "Codex" : "Claude")
-            .font(.system(size: 9, weight: .bold))
+            .font(.system(size: 10, weight: .bold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(session.source.isCodex ? Color.purple.opacity(0.22) : Color.orange.opacity(0.22))
             .foregroundStyle(session.source.isCodex ? .purple : .orange)
@@ -144,7 +144,7 @@ struct SessionRowView: View {
     }
 
     private func chip(_ text: String, _ color: Color) -> some View {
-        Text(text).font(.system(size: 9, weight: .semibold))
+        Text(text).font(.system(size: 10, weight: .semibold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(color.opacity(0.18)).foregroundStyle(color).clipShape(Capsule())
     }
@@ -183,8 +183,8 @@ struct SessionRowView: View {
     /// or a Claude routine ("routine"). Same clock glyph as the Automations tab.
     private func scheduleBadge(_ text: String, _ color: Color) -> some View {
         HStack(spacing: 2) {
-            Image(systemName: "clock.arrow.2.circlepath").font(.system(size: 8))
-            Text(text).font(.system(size: 9, weight: .bold))
+            Image(systemName: "clock.arrow.2.circlepath").font(.system(size: 9))
+            Text(text).font(.system(size: 10, weight: .bold))
         }
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(color.opacity(0.18)).foregroundStyle(color)
@@ -195,8 +195,8 @@ struct SessionRowView: View {
     /// so this is the at-a-glance count).
     private var subagentChip: some View {
         HStack(spacing: 2) {
-            Image(systemName: "person.2.fill").font(.system(size: 8))
-            Text("\(subagentCount)").font(.system(size: 9, weight: .bold))
+            Image(systemName: "person.2.fill").font(.system(size: 9))
+            Text("\(subagentCount)").font(.system(size: 10, weight: .bold))
         }
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(Color.secondary.opacity(0.18)).foregroundStyle(.secondary)
@@ -206,8 +206,8 @@ struct SessionRowView: View {
     /// Marks an ended session — the terminal is gone, but click to resume it in a new Terminal.
     private var resumeChip: some View {
         HStack(spacing: 2) {
-            Image(systemName: "arrow.clockwise").font(.system(size: 8, weight: .bold))
-            Text("resume").font(.system(size: 9, weight: .bold))
+            Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .bold))
+            Text("resume").font(.system(size: 10, weight: .bold))
         }
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(Color.blue.opacity(0.2)).foregroundStyle(.blue)
@@ -221,7 +221,7 @@ struct SessionRowView: View {
             Text("·").foregroundStyle(.quaternary)
             Text(session.terminal.terminalApp ?? originatorText)
             if session.terminal.viaTmux { Text("· tmux") }
-        }.font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
     }
 
     /// Last-activity age, e.g. "2m" / "3h" — the freshness signal for active vs stale.

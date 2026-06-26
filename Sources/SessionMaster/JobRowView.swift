@@ -9,17 +9,17 @@ struct JobRowView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: job.source == .codex ? "clock.arrow.2.circlepath" : "repeat")
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(job.isPaused ? Color.secondary : (job.source == .codex ? .purple : .orange))
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
-                Text(job.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Text(job.name).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     .foregroundStyle(job.isPaused ? .secondary : .primary)
                 HStack(spacing: 6) {
                     Text(scheduleText)
                     if let m = job.model { Text("· \(m)") }
                     if let e = job.effort { Text("· \(e)") }
-                }.font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if let cwd = job.primaryCwd {

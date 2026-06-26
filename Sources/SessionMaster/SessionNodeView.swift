@@ -61,8 +61,8 @@ struct SessionNodeView: View {
     private func compactChild(_ s: UnifiedSession) -> some View {
         HStack(spacing: 6) {
             Circle().fill(s.attention.color.opacity(0.7)).frame(width: 5, height: 5)
-            Text(s.displayTitle).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-            Text(s.source.isCodex ? "Codex" : "sub").font(.system(size: 8, weight: .semibold))
+            Text(s.displayTitle).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+            Text(s.source.isCodex ? "Codex" : "sub").font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 0)
         }

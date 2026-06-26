@@ -28,37 +28,27 @@ struct MainWindowView: View {
     @State private var settings = AppSettings.shared
     @State private var window: NSWindow?
     @State private var didSetInitialSize = false
-    // Start with the sidebar hidden so the window opens as a narrow session list; the title-bar
-    // sidebar toggle (and ⌃⌘S) reveals the tabs on demand.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    @FocusState private var searchFocused: Bool
+    @State private var filterExpanded = false
     private let perProjectLimit = 5
 
     var body: some View {
-        // Collapsible sidebar, but driven by an explicit columnVisibility binding so the toggle
-        // animates to a defined state instead of getting stuck half-overlaid (the default
-        // NavigationSplitView without a binding glitches on macOS).
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(DashboardTab.allCases, id: \.self, selection: Binding(
-                get: { store.selectedTab }, set: { if let v = $0 { store.selectedTab = v } })) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
-                    .badge(tab == .about && store.availableUpdate != nil ? "Update" : nil)
-                    .tag(tab)
-            }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 168, max: 220)
-        } detail: {
-            VStack(spacing: 0) {
-                if store.selectedTab == .sessions { sessionControls; Divider() }
-                if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
-                switch store.selectedTab {
-                case .sessions:    sessionsList
-                case .automations: automationsList
-                case .config:      ConfigView(store: store)
-                case .about:       AboutView()
-                }
+        // A compact top tab bar (icon over label, selected one highlighted) replaces the old
+        // sidebar — it keeps the window narrow without stealing a whole column, and the tabs are
+        // always visible instead of hidden behind a toggle.
+        VStack(alignment: .leading, spacing: 0) {
+            tabBar
+            Divider()
+            if store.selectedTab == .sessions { sessionControls; Divider() }
+            if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
+            switch store.selectedTab {
+            case .sessions:    sessionsList
+            case .automations: automationsList
+            case .config:      ConfigView(store: store)
+            case .about:       AboutView()
             }
         }
-        .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 420, minHeight: 460)
+        .frame(minWidth: 380, minHeight: 460)
         .background(.background)
         .background(WindowAccessor { window = $0; applyAlwaysOnTop(); applyInitialSize() })
         .onChange(of: settings.dashboardAlwaysOnTop) { applyAlwaysOnTop() }
@@ -95,26 +85,139 @@ struct MainWindowView: View {
         }
     }
 
-    // MARK: Session controls (filter / sort / search — the tabs live in the sidebar now)
+    // MARK: Tab bar (Tailscale-style: icon over label, the selected one highlighted)
+
+    private var tabBar: some View {
+        HStack(spacing: 4) {
+            ForEach([DashboardTab.sessions, .automations, .config], id: \.self) { tabButton($0) }
+            // Refresh lives here (left of About), styled like a tab (icon + label) for consistency
+            // but without the selected highlight since it's an action, not a tab. It re-scans every
+            // session's latest state now (the app also auto-polls every 2s).
+            Button { store.refresh() } label: {
+                VStack(spacing: 3) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 15, weight: .medium))
+                    Text("Refresh").font(.system(size: 10, weight: .medium)).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 6)
+                .foregroundStyle(.secondary).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).pointerCursor().help("Refresh now — re-scan all sessions")
+            tabButton(.about)
+        }
+        .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 4)
+    }
+
+    private func tabButton(_ tab: DashboardTab) -> some View {
+        let selected = store.selectedTab == tab
+        let hasUpdate = tab == .about && store.availableUpdate != nil
+        return Button { store.selectedTab = tab } label: {
+            VStack(spacing: 3) {
+                Image(systemName: tab.icon).font(.system(size: 15, weight: .medium))
+                    // A small dot on About flags an available update (replaces the old badge).
+                    .overlay(alignment: .topTrailing) {
+                        if hasUpdate {
+                            Circle().fill(.red).frame(width: 6, height: 6).offset(x: 5, y: -2)
+                        }
+                    }
+                Text(tab.rawValue).font(.system(size: 10, weight: .medium)).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            .background(RoundedRectangle(cornerRadius: 8)
+                .fill(selected ? Color.accentColor.opacity(0.14) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).pointerCursor()
+        .help(tab.rawValue + (hasUpdate ? " — update available" : ""))
+    }
+
+    // MARK: Session controls (filter / sort / search)
 
     private var sessionControls: some View {
-        HStack(spacing: 12) {
-            Picker("", selection: $sourceFilter) {
-                ForEach(SourceFilter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).fixedSize()
-            Picker("", selection: $sortMode) {
+        // Fits the narrow (~380pt) default: a collapsible source filter + a compact Sort menu keep
+        // their natural size; the search field absorbs the rest. On focus the filter/sort slide away
+        // so the input grows to the full width — easier to read/edit a long query.
+        HStack(spacing: 8) {
+            if !searchFocused {
+                sourceFilterControl
+                sortControl
+            }
+            searchField
+        }
+        .padding(.horizontal, 8).padding(.vertical, 10)
+        .animation(.easeInOut(duration: 0.18), value: searchFocused)
+        .animation(.easeInOut(duration: 0.18), value: filterExpanded)
+        .onChange(of: searchFocused) { if searchFocused { filterExpanded = false } }
+    }
+
+    /// Source filter that saves width: collapsed to one pill showing the active source; tap to
+    /// expand the three choices, and picking one collapses it back.
+    @ViewBuilder private var sourceFilterControl: some View {
+        if filterExpanded {
+            HStack(spacing: 2) {
+                ForEach(SourceFilter.allCases, id: \.self) { f in
+                    let on = sourceFilter == f
+                    Button { sourceFilter = f; filterExpanded = false } label: {
+                        Text(f.rawValue).font(.caption.weight(.medium))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(RoundedRectangle(cornerRadius: 7)
+                                .fill(on ? Color.accentColor.opacity(0.18) : Color.primary.opacity(0.06)))
+                            .foregroundStyle(on ? Color.accentColor : .primary)
+                    }.buttonStyle(.plain).pointerCursor()
+                }
+            }
+        } else {
+            // Tint the pill when a non-default filter is active so it reads as "filtered".
+            let active = sourceFilter != .all
+            Button { filterExpanded = true } label: {
+                HStack(spacing: 3) {
+                    Text(sourceFilter.rawValue).font(.caption.weight(.medium))
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
+                }
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .foregroundStyle(active ? Color.accentColor : .primary)
+                .background(active ? Color.accentColor.opacity(0.14) : Color.primary.opacity(0.06))
+                .clipShape(Capsule())
+            }.buttonStyle(.plain).pointerCursor().help("Filter by source")
+        }
+    }
+
+    /// Project / Recent aggregated into one compact "Sort" dropdown.
+    private var sortControl: some View {
+        Menu {
+            Picker("Sort", selection: $sortMode) {
                 ForEach(SortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.pickerStyle(.segmented).fixedSize().help("Sort order")
-            Spacer()
-            HStack(spacing: 4) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
-                TextField("Filter", text: $search).textFieldStyle(.plain).frame(width: 160)
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "arrow.up.arrow.down").font(.system(size: 9, weight: .semibold))
+                Text(sortMode.rawValue).font(.caption.weight(.medium))
             }
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Color.primary.opacity(0.06)).clipShape(Capsule())
-            Button { store.refresh() } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless).help("Refresh now").pointerCursor()
-        }.padding(10)
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .pointerCursor().help("Sort order")
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
+            TextField("Filter", text: $search).textFieldStyle(.plain).focused($searchFocused)
+            if !search.isEmpty {
+                Button { search = "" } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
+                }.buttonStyle(.plain).pointerCursor()
+            }
+            if searchFocused {
+                Button("Done") { searchFocused = false }
+                    .buttonStyle(.plain).font(.caption).foregroundStyle(.tint).pointerCursor()
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background(Color.primary.opacity(0.06)).clipShape(Capsule())
     }
 
     // MARK: Sessions (grouped by project)
@@ -163,13 +266,16 @@ struct MainWindowView: View {
             // Plain scroll with zero inter-row spacing so each row's timeline rail joins the next
             // into one continuous vertical line (a List inserts gaps that break the rail).
             ScrollView {
-                LazyVStack(spacing: 0) {
+                // Leading alignment + full-width rows so a row wider than the (narrow) window
+                // truncates on the right instead of centering and clipping both edges.
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(recentNodes.enumerated()), id: \.element.id) { idx, node in
                         SessionNodeView(node: node, expanded: $expandedNodes, store: store,
                                         isFirst: idx == 0, isLast: idx == recentNodes.count - 1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 6)
                     }
-                }.padding(.vertical, 6)
+                }.padding(.vertical, 6).frame(maxWidth: .infinity)
             }
         } else {
             List {

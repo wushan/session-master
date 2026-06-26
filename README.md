@@ -77,7 +77,7 @@ puts it in one place, with one-click recall.
 
 <p align="center">
   <img src="docs/images/dashboard.png" alt="SessionMaster dashboard window" width="760"><br>
-  <sub>The dashboard — sidebar tabs, source filter, Project/Recent sort, search, and a rich row per session.</sub>
+  <sub>The dashboard — top tabs, a collapsible source filter, a Sort menu, search, and a rich row per session.</sub>
 </p>
 
 ### Status colors
