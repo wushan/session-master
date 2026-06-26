@@ -166,7 +166,11 @@ public enum SessionAggregator {
     /// Top-level sessions plus a map of parent id → sub-agent children (Codex sub-agents).
     public static func snapshot() -> (sessions: [UnifiedSession], subagents: [String: [UnifiedSession]]) {
         let claude = claudeSessions()
-        let liveIds = Set(claude.map(\.id))
+        let jsonLiveIds = Set(claude.map(\.id))
+        // Live CLI sessions the live-state files miss (a terminal resume of a Desktop-origin
+        // session writes no ~/.claude/sessions/{pid}.json) — recovered from process argv.
+        let resumed = claudeResumeSessions(excluding: jsonLiveIds)
+        let liveIds = jsonLiveIds.union(resumed.map(\.id))
         let desktop = desktopStandalone(excluding: liveIds)
         let codexRaw = filterCodex(CodexSessionCollector.recent())
         let codex = codexRaw.map(unified(from:))
@@ -176,10 +180,10 @@ public enum SessionAggregator {
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
         }
         // Recently-ended Claude CLI sessions (terminal closed) — resumable, not currently shown.
-        let shownIds = Set((claude + desktop).map(\.id))
+        let shownIds = Set((claude + resumed + desktop).map(\.id))
         let ended = ClaudeEndedCollector.recent(excluding: shownIds).compactMap(endedSession(from:))
 
-        var sessions = claude + codex + desktop + ended
+        var sessions = claude + resumed + codex + desktop + ended
         // Belt-and-suspenders: never emit two sessions sharing an id (SwiftUI Identifiable).
         var seenIds = Set<String>()
         sessions = sessions.filter { seenIds.insert($0.id).inserted }
@@ -220,11 +224,17 @@ public enum SessionAggregator {
             // crash SwiftUI's ForEach (Identifiable must be unique).
             guard let cli = d.cliSessionId, seen.insert(cli).inserted else { continue }
             guard let cwd = d.cwd ?? d.worktreePath, !cwd.isEmpty else { continue }
+            // A terminal resume appends to the transcript but never touches the Desktop store's
+            // lastActivityAt, leaving it frozen (the session looks days old). Prefer the
+            // transcript's mtime when newer so a recently-used session sorts correctly.
+            let updated = [d.lastActivityAt,
+                           ClaudeHistoryEnricher.transcriptMtime(sessionId: cli, cwd: cwd)]
+                .compactMap { $0 }.max()
             out.append(UnifiedSession(
                 id: cli, source: .claudeDesktop, pid: nil, cwd: cwd, name: nil, title: d.title,
                 model: d.model, effort: d.effort, branch: d.branch, worktreeName: d.worktreeName,
                 originator: nil, status: .idle, waitingFor: nil, terminal: .dead,
-                updatedAt: d.lastActivityAt, scheduledTaskId: d.scheduledTaskId))
+                updatedAt: updated, scheduledTaskId: d.scheduledTaskId))
         }
         return out
     }
@@ -268,6 +278,40 @@ public enum SessionAggregator {
                 status: UnifiedSession.Status(rawValue: s.status) ?? .unknown,
                 waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt,
                 scheduledTaskId: scheduledTaskId)
+            u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
+            u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
+            u.rich.contextPercent = h?.contextPercent
+            return u
+        }
+    }
+
+    /// Live Claude CLI sessions found by reading process argv (`claude --resume <id>`), for the
+    /// case where the CLI wrote no `~/.claude/sessions/{pid}.json` — e.g. a terminal resume of a
+    /// Desktop-origin session. Excludes ids already surfaced from the live-state files.
+    ///
+    /// Status is reported as a stable `.idle` (→ "your turn" for a live interactive Claude session),
+    /// NOT inferred busy/idle from the transcript mtime: a mtime heuristic would flip busy↔idle and
+    /// fire a spurious "your turn" notification whenever a turn pauses (e.g. a slow tool run). The
+    /// mtime is still used for `updatedAt` so the row sorts correctly and isn't shown as stale.
+    static func claudeResumeSessions(excluding existing: Set<String>) -> [UnifiedSession] {
+        let procs = ProcessCollector.claudeResumeProcesses().filter { !existing.contains($0.sessionId) }
+        guard !procs.isEmpty else { return [] }
+        let terms = ProcessCollector.correlateTerminals(pids: procs.map(\.pid))
+        let desktop = ClaudeDesktopCollector.indexByCliSessionId()
+        return procs.compactMap { p in
+            let d = desktop[p.sessionId]
+            let cwd = ProcessCollector.cwd(of: p.pid) ?? d?.cwd ?? d?.worktreePath ?? ""
+            guard !cwd.isEmpty else { return nil }
+            let mtime = ClaudeHistoryEnricher.transcriptMtime(sessionId: p.sessionId, cwd: cwd)
+            let h = ClaudeHistoryEnricher.enrich(sessionId: p.sessionId, cwd: cwd)
+            var u = UnifiedSession(
+                id: p.sessionId, source: .claudeCLI, pid: p.pid, cwd: cwd,
+                name: nil, title: d?.title,
+                model: d?.model ?? h?.model, effort: d?.effort,
+                branch: d?.branch ?? h?.branch, worktreeName: d?.worktreeName,
+                originator: nil, status: .idle,
+                waitingFor: nil, terminal: terms[p.pid] ?? .dead,
+                updatedAt: mtime ?? d?.lastActivityAt, scheduledTaskId: d?.scheduledTaskId)
             u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
             u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
             u.rich.contextPercent = h?.contextPercent
