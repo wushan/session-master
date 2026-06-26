@@ -209,6 +209,12 @@ public enum SessionAggregator {
         return (sessions.sorted(by: order), subagents)
     }
 
+    /// Ended Claude CLI sessions (beyond the default recency window) whose transcript matches the
+    /// search query — for finding/resuming an older closed session by typing in the dashboard.
+    public static func searchEndedSessions(query: String, excluding: Set<String>) -> [UnifiedSession] {
+        ClaudeEndedCollector.matching(query: query, excluding: excluding).compactMap(endedSession(from:))
+    }
+
     /// A recently-ended Claude CLI session, reconstructed from its transcript so it can be resumed.
     static func endedSession(from e: EndedClaudeSession) -> UnifiedSession? {
         guard let cwd = e.history.cwd, !cwd.isEmpty else { return nil }
