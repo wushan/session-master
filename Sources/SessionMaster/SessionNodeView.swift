@@ -62,8 +62,8 @@ struct SessionNodeView: View {
         HStack(spacing: 6) {
             Circle().fill(s.attention.color.opacity(0.7)).frame(width: 5, height: 5)
             Text(s.displayTitle).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-            Text(s.source.isCodex ? "Codex" : "sub").font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.tertiary)
+            Text(s.originator == "workflow" ? "workflow" : (s.source.isCodex ? "Codex" : "sub"))
+                .font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)

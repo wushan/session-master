@@ -179,6 +179,13 @@ public enum SessionAggregator {
             let subs = CodexSubagentScanner.scan(rollout: c.url)
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
         }
+        // Under each live Claude session (json-live + argv-resumed): nest its currently-running
+        // dynamic Workflow runs and standalone Task sub-agents (finished ones are omitted).
+        for p in (claude + resumed) {
+            var kids = ClaudeWorkflowScanner.scan(sessionId: p.id, cwd: p.cwd).map { workflowSession($0, parent: p) }
+            kids += ClaudeSubagentScanner.scan(sessionId: p.id, cwd: p.cwd).map { subagentSession($0, parent: p) }
+            if !kids.isEmpty { subagents[p.id] = kids }
+        }
         // Recently-ended Claude CLI sessions (terminal closed) — resumable, not currently shown.
         let shownIds = Set((claude + resumed + desktop).map(\.id))
         let ended = ClaudeEndedCollector.recent(excluding: shownIds).compactMap(endedSession(from:))
@@ -380,6 +387,28 @@ public enum SessionAggregator {
             model: nil, effort: nil, branch: c.branch, worktreeName: nil,
             originator: "subagent",
             status: .idle, waitingFor: nil, terminal: .dead, updatedAt: nil)
+    }
+
+    /// A running dynamic Workflow shown as a child row under its parent session.
+    static func workflowSession(_ w: ClaudeWorkflow, parent p: UnifiedSession) -> UnifiedSession {
+        UnifiedSession(
+            id: w.id,
+            source: .claudeCLI,
+            pid: nil, cwd: p.cwd, name: w.name, title: nil, model: nil, effort: nil,
+            branch: p.branch, worktreeName: p.worktreeName,
+            originator: "workflow",
+            status: .busy, waitingFor: nil, terminal: .dead, updatedAt: w.startedAt)
+    }
+
+    /// A Claude sub-agent (Task tool) shown as a child row under its parent session.
+    static func subagentSession(_ s: ClaudeSubagent, parent p: UnifiedSession) -> UnifiedSession {
+        UnifiedSession(
+            id: s.id,
+            source: .claudeCLI,
+            pid: nil, cwd: p.cwd, name: s.description.isEmpty ? s.agentType : s.description,
+            title: nil, model: nil, effort: nil, branch: p.branch, worktreeName: p.worktreeName,
+            originator: "subagent",
+            status: .idle, waitingFor: nil, terminal: .dead, updatedAt: s.updatedAt)
     }
 
     /// Codex has no status field; approximate from how recently the rollout was written.
