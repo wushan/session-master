@@ -2,6 +2,15 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.3] — 2026-06-26
+
+### Fixed
+- **Sub-agent transcripts no longer appear as duplicate "ended" sessions.** The ended-session scan
+  recursively walked `~/.claude/projects` and treated every transcript as a top-level session,
+  including a session's own `subagents/agent-*.jsonl` files — so a project could show several
+  phantom *Ended — resume* rows (and resuming one would fail). The scan now skips per-session
+  `subagents/`/`workflows/` directories and only accepts UUID-named session transcripts.
+
 ## [0.3.2] — 2026-06-26
 
 ### Added
