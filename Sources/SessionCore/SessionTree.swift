@@ -18,23 +18,26 @@ public enum SessionTree {
     /// `extraChildren` maps a parent session id to additional children (e.g. Codex sub-agents).
     public static func build(_ sessions: [UnifiedSession],
                              extraChildren: [String: [UnifiedSession]] = [:]) -> [SessionNode] {
-        var claudeByKey: [String: UnifiedSession] = [:]
+        var claudeByKey: [String: UnifiedSession] = [:]   // projectRoot + branch
+        var claudeByPR: [String: UnifiedSession] = [:]    // projectRoot + PR number
         var claudeByRoot: [String: [UnifiedSession]] = [:]
         for s in sessions where s.source.isClaude {
             claudeByRoot[s.projectRoot, default: []].append(s)
             if let b = s.branch, !b.isEmpty { claudeByKey[key(s.projectRoot, b)] = s }
+            if let pr = s.rich.prNumber { claudeByPR[key(s.projectRoot, String(pr))] = s }
         }
 
         var childrenOf = extraChildren
         var claimed = Set<String>()
         for s in sessions where s.source.isCodex && claudeDriven.contains(s.originator ?? "") {
-            guard let b = s.branch, !b.isEmpty else { continue }
-            // Prefer an exact project+branch match. If none (e.g. the Claude session's branch is
-            // unknown — its transcript can record "HEAD"), fall back to the *only* Claude session
-            // in that project root.
+            // A companion's recorded branch is usually its own feature branch, not the parent's
+            // worktree branch, so an exact branch match often misses. Match on branch OR the shared
+            // PR number, then fall back to the *only* Claude session in that project root (also when
+            // the companion has no branch at all).
             let root = claudeByRoot[s.projectRoot]
-            guard let parent = claudeByKey[key(s.projectRoot, b)]
-                    ?? (root?.count == 1 ? root?.first : nil) else { continue }
+            let byBranch = s.branch.flatMap { $0.isEmpty ? nil : claudeByKey[key(s.projectRoot, $0)] }
+            let byPR = s.rich.prNumber.flatMap { claudeByPR[key(s.projectRoot, String($0))] }
+            guard let parent = byBranch ?? byPR ?? (root?.count == 1 ? root?.first : nil) else { continue }
             childrenOf[parent.id, default: []].append(s)
             claimed.insert(s.id)
         }
