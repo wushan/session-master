@@ -2,7 +2,20 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
-## [0.3.4] — 2026-06-26
+## [0.3.5] — 2026-06-27
+
+### Added
+- **Find and resume older closed sessions by searching.** A Claude CLI session that ended more than
+  the recent window ago used to vanish from the list. Now the default window is wider (last day),
+  and typing in **Filter** reaches back further (last two weeks) to surface a closed session by its
+  title / last prompt / branch / folder — so you can find and resume it without it cluttering the
+  default list.
+
+### Fixed
+- **Codex companions nest under their parent session again.** A Codex companion ("via Claude Code")
+  records its own feature branch, which differs from the parent's worktree branch, so it had been
+  floating as a separate top-level session. Companions are now matched to their parent by branch
+  **or** shared pull-request number (and a branchless one falls back to the sole session in the repo).
 
 ### Fixed
 - **The dashboard no longer opens with the Filter search field focused.** AppKit made the search box

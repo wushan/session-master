@@ -51,7 +51,8 @@ puts it in one place, with one-click recall.
   window %, and the session's last prompt.
 - **Timeline list** — last-activity time on a left axis; a **halo ring** marks sessions that are
   actively working, and sessions idle >48h fade to grayscale so the live ones stand out.
-- **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list.
+- **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list —
+  search also reaches back to find (and resume) a session you closed days ago.
 - **Parent → child hierarchy**: a Claude session nests the things it spawned — Codex companions,
   its currently-running Task **sub-agents**, and any in-progress dynamic **workflow** run —
   **collapsed by default** with a count, shown as compact read-only lines when expanded (children
