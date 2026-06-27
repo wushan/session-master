@@ -149,6 +149,16 @@ final class SessionStore {
         }
     }
 
+    /// Search ended sessions older than the default window for ones matching `query` (title / last
+    /// prompt / branch / cwd). Runs the transcript scan off the main thread. Excludes ids already
+    /// loaded so results only add older matches.
+    func searchOlder(_ query: String) async -> [UnifiedSession] {
+        let exclude = Set(sessions.map(\.id))
+        return await Task.detached(priority: .userInitiated) {
+            SessionAggregator.searchEndedSessions(query: query, excluding: exclude)
+        }.value
+    }
+
     /// Resolve the session's real worktree (feature-branch worktree, not the repo root).
     func effectivePath(_ s: UnifiedSession) -> String {
         GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)

@@ -23,6 +23,9 @@ struct MainWindowView: View {
     @State private var sourceFilter: SourceFilter = .all
     @State private var sortMode: SortMode = .recent
     @State private var search = ""
+    // Ended sessions older than the loaded window that match the current search — fetched on demand
+    // (debounced) so typing can find/resume a session closed days ago without bloating the default list.
+    @State private var olderResults: [UnifiedSession] = []
     @State private var expandedNodes: Set<String> = []
     @State private var expandedProjects: Set<String> = []
     @State private var settings = AppSettings.shared
@@ -57,6 +60,14 @@ struct MainWindowView: View {
         // minimize works; drop back to menu-bar-only only once it's really gone — deferred + guarded
         // so closing-then-reopening (or a stray disappear) can't strand the app without a Dock icon.
         .onAppear { NSApp.setActivationPolicy(.regular) }
+        // Search reaches older (out-of-window) closed sessions: debounce keystrokes, then scan.
+        .task(id: search) {
+            guard search.count >= 2 else { olderResults = []; return }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            let r = await store.searchOlder(search)
+            if !Task.isCancelled { olderResults = r }   // don't let a stale query clobber newer results
+        }
         .onDisappear {
             DispatchQueue.main.async {
                 let stillOpen = NSApp.windows.contains {
@@ -225,18 +236,24 @@ struct MainWindowView: View {
 
     // MARK: Sessions (grouped by project)
 
-    private var filteredSessions: [UnifiedSession] {
-        store.sessions.filter { s in
-            switch sourceFilter {
-            case .all: break
-            case .claude: if !s.source.isClaude { return false }
-            case .codex: if !s.source.isCodex { return false }
-            }
-            guard !search.isEmpty else { return true }
-            let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd]
-                .compactMap { $0 }.joined(separator: " ")
-            return hay.localizedCaseInsensitiveContains(search)
+    private func matches(_ s: UnifiedSession) -> Bool {
+        switch sourceFilter {
+        case .all: break
+        case .claude: if !s.source.isClaude { return false }
+        case .codex: if !s.source.isCodex { return false }
         }
+        guard !search.isEmpty else { return true }
+        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd]
+            .compactMap { $0 }.joined(separator: " ")
+        return hay.localizedCaseInsensitiveContains(search)
+    }
+
+    private var filteredSessions: [UnifiedSession] {
+        let base = store.sessions.filter(matches)
+        guard !search.isEmpty else { return base }
+        // Fold in the older (out-of-window) ended matches, deduped against what's already loaded.
+        let have = Set(base.map(\.id))
+        return base + olderResults.filter { matches($0) && !have.contains($0.id) }
     }
 
     private var grouped: [(project: String, nodes: [SessionNode])] {
