@@ -2,6 +2,16 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.6] — 2026-06-29
+
+### Fixed
+- **Resuming a session whose folder was deleted no longer flashes a terminal open and shut.** When a
+  session's working directory — a `.claude/worktrees/<name>` git worktree — had been removed after its
+  branch merged, Resume ran `cd` into the missing folder, so the terminal opened and instantly closed
+  with no explanation (the conversation history was never lost). SessionMaster now detects the missing
+  folder first: if the worktree is recoverable (repo present, branch still exists) it offers to
+  recreate it and then resume; otherwise it explains why it can't, instead of failing silently.
+
 ## [0.3.5] — 2026-06-27
 
 ### Added
