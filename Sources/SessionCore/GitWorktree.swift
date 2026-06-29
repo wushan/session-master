@@ -20,6 +20,32 @@ public enum GitWorktree {
         return result
     }
 
+    /// If `path` is a `<repo>/.claude/worktrees/<name>` worktree path, the repo root; else nil.
+    /// Used to recover a session whose worktree folder was deleted after the branch merged.
+    /// Anchored on the *last* marker (a repo could itself live under such a path) and only matches
+    /// when a worktree name follows it.
+    public static func repoRootForWorktreePath(_ path: String) -> String? {
+        let marker = "/.claude/worktrees/"
+        guard let r = path.range(of: marker, options: .backwards),
+              r.upperBound < path.endIndex else { return nil }
+        return String(path[path.startIndex..<r.lowerBound])
+    }
+
+    /// Whether `branch` still exists as a local branch in `repo`.
+    public static func branchExists(_ branch: String, repo: String) -> Bool {
+        Shell.run("/usr/bin/git",
+                  ["-C", repo, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch]) != nil
+    }
+
+    /// Recreate a removed worktree at `path` checking out `branch`, in `repo`. Returns true on success.
+    /// The transcript is keyed to this exact path, so resume only works once the folder is back.
+    /// `-f`: a worktree folder deleted with `rm -rf` leaves a stale registration in
+    /// `.git/worktrees/<name>`, and a plain `add` then fails with "missing but already registered".
+    public static func recreate(path: String, branch: String, repo: String) -> Bool {
+        Shell.run("/usr/bin/git",
+                  ["-C", repo, "worktree", "add", "-f", path, branch], timeout: 30) != nil
+    }
+
     static func worktree(forBranch branch: String, repo: String) -> String? {
         guard let out = Shell.run("/usr/bin/git", ["-C", repo, "worktree", "list", "--porcelain"])
         else { return nil }

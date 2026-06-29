@@ -140,12 +140,62 @@ final class SessionStore {
             lastRecallMessage = "Can’t resume “\(s.displayTitle)” — its folder is unknown."
             return
         }
+        // The folder gone — old behaviour ran `cd` into a missing dir, so the terminal opened and
+        // instantly closed with no clue why. If it was a git worktree (merged branch → pruned
+        // worktree), offer to recreate it; the transcript is intact and keyed to this exact path.
+        if !FileManager.default.fileExists(atPath: s.cwd) {
+            handleMissingFolder(s, command: cmd); return
+        }
+        launchResume(s, command: cmd)
+    }
+
+    private func launchResume(_ s: UnifiedSession, command cmd: String) {
         let terminal = settings.resumeTerminal
         let cwd = s.cwd
         lastRecallMessage = "Resuming “\(s.displayTitle)” in \(terminal.rawValue)…"
         // File IO + `open` off the main thread (like recall) so the UI never hitches.
         Task.detached(priority: .userInitiated) {
             TerminalLauncher.run(command: cmd, cwd: cwd, terminal: terminal)
+        }
+    }
+
+    /// The session's folder no longer exists. If it's a recreatable `.claude/worktrees/...` worktree
+    /// (repo present, branch still exists), prompt to recreate it and resume; otherwise explain why
+    /// resume can't proceed instead of silently flashing a terminal open and shut.
+    private func handleMissingFolder(_ s: UnifiedSession, command cmd: String) {
+        let path = s.cwd
+        guard let repo = GitWorktree.repoRootForWorktreePath(path),
+              FileManager.default.fileExists(atPath: repo),
+              let branch = s.branch, !branch.isEmpty, branch != "HEAD",
+              GitWorktree.branchExists(branch, repo: repo) else {
+            let alert = NSAlert()
+            alert.messageText = "Can’t resume “\(s.displayTitle)”"
+            alert.informativeText = "Its folder no longer exists:\n\(path)\n\nThe conversation history is intact, but its working directory is gone, so it can’t be reopened from here."
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            lastRecallMessage = "Can’t resume — “\(path)” no longer exists."
+            return
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Recreate worktree to resume?"
+        alert.informativeText = "The folder for “\(s.displayTitle)” is gone:\n\(path)\n\nIt was a git worktree on branch “\(branch)” that’s since been removed. The conversation history is intact — recreate the worktree to resume it."
+        alert.addButton(withTitle: "Recreate & Resume")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            lastRecallMessage = "Resume cancelled."
+            return
+        }
+        lastRecallMessage = "Recreating worktree for “\(s.displayTitle)”…"
+        Task.detached(priority: .userInitiated) {
+            let ok = GitWorktree.recreate(path: path, branch: branch, repo: repo)
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if ok { self.launchResume(s, command: cmd) }
+                else { self.lastRecallMessage = "Couldn’t recreate the worktree at “\(path)”." }
+            }
         }
     }
 
