@@ -2,6 +2,14 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.9] — 2026-07-01
+
+### Fixed
+- **A session running a long shell command now shows as working (green), not idle (gray).** Claude
+  reports `shell` status while a Bash command runs — e.g. a multi-minute `codex` review subprocess —
+  but that was mapped to idle, so a busy session looked dormant. It's now treated as working, and
+  flips to "your turn" only when the command finishes and the turn actually ends.
+
 ## [0.3.8] — 2026-06-30
 
 ### Fixed
