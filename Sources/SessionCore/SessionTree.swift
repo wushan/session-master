@@ -18,13 +18,15 @@ public enum SessionTree {
     /// `extraChildren` maps a parent session id to additional children (e.g. Codex sub-agents).
     public static func build(_ sessions: [UnifiedSession],
                              extraChildren: [String: [UnifiedSession]] = [:]) -> [SessionNode] {
-        var claudeByKey: [String: UnifiedSession] = [:]   // projectRoot + branch
-        var claudeByPR: [String: UnifiedSession] = [:]    // projectRoot + PR number
+        var claudeByKey: [String: UnifiedSession] = [:]        // projectRoot + branch
+        var claudeByPR: [String: UnifiedSession] = [:]         // projectRoot + PR number
+        var claudeByWorktree: [String: UnifiedSession] = [:]   // projectRoot + worktree name
         var claudeByRoot: [String: [UnifiedSession]] = [:]
         for s in sessions where s.source.isClaude {
             claudeByRoot[s.projectRoot, default: []].append(s)
             if let b = s.branch, !b.isEmpty { claudeByKey[key(s.projectRoot, b)] = s }
             if let pr = s.rich.prNumber { claudeByPR[key(s.projectRoot, String(pr))] = s }
+            if let wt = s.worktreeKey { claudeByWorktree[key(s.projectRoot, wt)] = s }
         }
 
         var childrenOf = extraChildren
@@ -32,12 +34,16 @@ public enum SessionTree {
         for s in sessions where s.source.isCodex && claudeDriven.contains(s.originator ?? "") {
             // A companion's recorded branch is usually its own feature branch, not the parent's
             // worktree branch, so an exact branch match often misses. Match on branch OR the shared
-            // PR number, then fall back to the *only* Claude session in that project root (also when
-            // the companion has no branch at all).
+            // PR number OR the shared worktree name (the Claude session may have been launched from
+            // the repo root on `master` while driving the companion into a feature worktree — only
+            // the worktree name links them), then fall back to the *only* Claude session in that
+            // project root (also when the companion has no branch at all).
             let root = claudeByRoot[s.projectRoot]
             let byBranch = s.branch.flatMap { $0.isEmpty ? nil : claudeByKey[key(s.projectRoot, $0)] }
             let byPR = s.rich.prNumber.flatMap { claudeByPR[key(s.projectRoot, String($0))] }
-            guard let parent = byBranch ?? byPR ?? (root?.count == 1 ? root?.first : nil) else { continue }
+            let byWorktree = s.worktreeKey.flatMap { claudeByWorktree[key(s.projectRoot, $0)] }
+            guard let parent = byBranch ?? byPR ?? byWorktree ?? (root?.count == 1 ? root?.first : nil)
+            else { continue }
             childrenOf[parent.id, default: []].append(s)
             claimed.insert(s.id)
         }

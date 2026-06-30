@@ -108,19 +108,23 @@ struct SessionRowView: View {
         } else {
             HStack(alignment: .top, spacing: 5) {
                 Text(relativeAge ?? "").font(.system(size: 11)).foregroundStyle(.tertiary)
-                    .frame(width: 28, alignment: .trailing).padding(.top, rowVPad)
+                    .frame(width: 28, alignment: .trailing).padding(.top, titleCenterY - 6.5)
                 ZStack(alignment: .top) {
                     railLine
                     TimelineDot(color: session.attention.color, pulsing: session.attention == .working)
-                        .padding(.top, rowVPad - 1).help(session.attention.label)
+                        .padding(.top, titleCenterY - 4.5).help(session.attention.label)
                 }.frame(width: 12)
             }
         }
     }
 
+    /// Vertical center of the title's first line (14pt), measured from the row's content top. The
+    /// age label and the timeline dot align to this so they sit level with the title instead of
+    /// floating above it.
+    private var titleCenterY: CGFloat { rowVPad + 8.5 }
     /// Vertical distance from the row's top to the dot's center — where the rail starts (first row)
-    /// or ends (last row).
-    private var dotCenterY: CGFloat { rowVPad + 3.5 }
+    /// or ends (last row). The dot rides at the title's center.
+    private var dotCenterY: CGFloat { titleCenterY }
 
     /// The rail segment for this row, trimmed at the ends of a continuous list: from the dot down on
     /// the first row, top down to the dot on the last, full height in the middle, none for a lone row.

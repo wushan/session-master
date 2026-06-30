@@ -2,6 +2,23 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.8] — 2026-06-30
+
+### Fixed
+- **Context-window % no longer pins at 100% for a 1M-context session.** The window was inferred from
+  the model id, but a CLI transcript records `claude-opus-4-8` without the `[1m]` marker (that suffix
+  only appears in the Desktop store), so a 1M session was measured against the 200k window and read a
+  bogus >100% (clamped to 100%). It now also recognises that exceeding 200k tokens *is* proof of the
+  1M window (a 200k session auto-compacts long before that), so e.g. 320k tokens reads 32%, not 100%.
+- **Timeline dots and age labels now sit level with the session title.** They were padded to the top
+  of the row and floated a few pixels above the title text; they're now centered on the title's first
+  line (and the continuous rail still meets each dot).
+- **A Codex companion nests under its parent even when the parent runs on the repo's main branch.** A
+  Claude session launched from the repo root (on `master`) that drives a `codex exec` run into a
+  feature worktree shares no branch or PR with it, so in a repo with many sessions the companion was
+  left floating as a separate top-level row. Companions now also match their parent by **worktree
+  name**, so the parent → child relationship is clear again.
+
 ## [0.3.7] — 2026-06-30
 
 ### Fixed
