@@ -82,7 +82,13 @@ public enum ClaudeHistoryEnricher {
                 default: break
                 }
             }
-            let window = (model ?? "").localizedCaseInsensitiveContains("1m") ? 1_000_000.0 : 200_000.0
+            // A 200k-window session auto-compacts well before 200k, so observing more than that
+            // proves it's running on the 1M context window — even when the transcript's model id
+            // lacks the "1m" marker (a CLI transcript records "claude-opus-4-8"; the "[1m]" suffix
+            // only appears in the Desktop store). Without this, a long 1M session reads a bogus
+            // >100% against the 200k denominator and pins at 100%.
+            let is1M = (model ?? "").localizedCaseInsensitiveContains("1m") || (ctxTokens ?? 0) > 200_000
+            let window = is1M ? 1_000_000.0 : 200_000.0
             let pct = ctxTokens.map { min(100, Int(Double($0) / window * 100)) }
             return ClaudeHistory(model: model, branch: branch, aiTitle: aiTitle, lastPrompt: lastPrompt,
                                  prNumber: prNumber, prURL: prURL, contextPercent: pct, cwd: cwd)

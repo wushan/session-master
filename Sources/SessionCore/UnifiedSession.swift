@@ -101,6 +101,27 @@ public struct UnifiedSession: Identifiable, Sendable {
     public var isWorktree: Bool {
         worktreeName != nil || cwd.contains("/.claude/worktrees/") || cwd.contains("/.codex/worktrees/")
     }
+    /// The worktree directory name from the cwd — the segment right after `.claude/worktrees/`
+    /// (or `.codex/worktrees/`), if the session is running inside a worktree.
+    public var cwdWorktreeName: String? {
+        for marker in ["/.claude/worktrees/", "/.codex/worktrees/"] {
+            if let r = cwd.range(of: marker) {
+                let seg = cwd[r.upperBound...].split(separator: "/").first
+                if let seg, !seg.isEmpty { return String(seg) }
+            }
+        }
+        return nil
+    }
+    /// A key identifying the worktree this session belongs to: its cwd worktree name, else the
+    /// metadata worktree name, else its (often worktree-derived) session name. Lets a Codex
+    /// companion spawned into a worktree link back to the Claude session that owns it even when
+    /// their git branches differ — e.g. the Claude session was launched from the repo root.
+    public var worktreeKey: String? {
+        if let w = cwdWorktreeName { return w }
+        if let w = worktreeName, !w.isEmpty { return w }
+        if let n = name, !n.isEmpty { return n }
+        return nil
+    }
     /// No interaction for >48h — shown dimmed/grayscale (still recallable) to mark it as old.
     public var isStale: Bool {
         guard let u = updatedAt else { return false }
