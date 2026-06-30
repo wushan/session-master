@@ -2,6 +2,17 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.3.7] — 2026-06-30
+
+### Fixed
+- **Session titles stay readable instead of flipping to a worktree slug.** When a session was running
+  in a terminal, the row showed Claude's auto-derived window name (an ugly slug like
+  `dazzling-williamson-d051b8-6e`) — which overrode the meaningful title and changed back to the
+  readable title whenever the session was only saved, so the same conversation appeared to rename
+  itself as it went live ↔ idle. SessionMaster now recognises an auto-derived name (`nameSource:
+  "derived"`) and keeps the human/AI title above it, so a conversation titled e.g. "現金網效能" stays
+  that way. A name you (or the AI) actually set still takes priority, and a custom rename always wins.
+
 ## [0.3.6] — 2026-06-29
 
 ### Fixed

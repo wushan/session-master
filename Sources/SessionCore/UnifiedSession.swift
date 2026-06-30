@@ -46,6 +46,7 @@ public struct UnifiedSession: Identifiable, Sendable {
     public let pid: pid_t?
     public let cwd: String
     public let name: String?            // Claude session name (== terminal window title)
+    public let nameSource: String?      // "derived" → name is an auto-generated worktree slug
     public let title: String?           // human title (Desktop / Codex thread)
     public let model: String?
     public let effort: String?
@@ -70,8 +71,9 @@ public struct UnifiedSession: Identifiable, Sendable {
                 model: String?, effort: String?, branch: String?, worktreeName: String?,
                 originator: String?, status: Status, waitingFor: String?,
                 terminal: TerminalInfo, updatedAt: Date?, isAutomationRun: Bool = false,
-                scheduledTaskId: String? = nil, isEnded: Bool = false) {
+                scheduledTaskId: String? = nil, isEnded: Bool = false, nameSource: String? = nil) {
         self.id = id; self.source = source; self.pid = pid; self.cwd = cwd; self.name = name
+        self.nameSource = nameSource
         self.title = title; self.model = model; self.effort = effort; self.branch = branch
         self.worktreeName = worktreeName; self.originator = originator; self.status = status
         self.waitingFor = waitingFor; self.terminal = terminal; self.updatedAt = updatedAt
@@ -104,7 +106,16 @@ public struct UnifiedSession: Identifiable, Sendable {
         guard let u = updatedAt else { return false }
         return Date().timeIntervalSince(u) > 48 * 3600
     }
-    public var displayTitle: String { rich.customTitle ?? name ?? title ?? projectName }
+    /// Label shown on the row. A user override always wins. Otherwise a live CLI session's `name`
+    /// is normally the right thing — except when Claude *derived* it from the worktree (an ugly slug
+    /// like "dazzling-williamson-d051b8-6e"): then we prefer the human/AI title so the label stays
+    /// readable and doesn't flip as the session toggles live↔saved (live uses `name`, saved uses
+    /// `title`). A non-derived name keeps priority.
+    public var displayTitle: String {
+        if let c = rich.customTitle, !c.isEmpty { return c }
+        if let n = name, !n.isEmpty, nameSource != "derived" { return n }
+        return title ?? rich.aiTitle ?? name ?? projectName
+    }
     /// One-line "what is this session doing" — the last user ask or the AI-generated title.
     public var subtitle: String? { rich.lastPrompt ?? rich.aiTitle }
 
@@ -290,7 +301,7 @@ public enum SessionAggregator {
                 originator: nil,
                 status: UnifiedSession.Status(rawValue: s.status) ?? .unknown,
                 waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt,
-                scheduledTaskId: scheduledTaskId)
+                scheduledTaskId: scheduledTaskId, nameSource: s.nameSource)
             u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
             u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
             u.rich.contextPercent = h?.contextPercent

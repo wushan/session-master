@@ -11,6 +11,9 @@ public struct LiveClaudeSession: Sendable, Identifiable {
     /// Claude's session summary; it is also the terminal window title (sans spinner),
     /// which makes it the reliable key for Accessibility-based window recall.
     public let name: String?
+    /// How `name` was set: "derived" means Claude auto-derived it from the worktree/cwd (an ugly
+    /// slug like "dazzling-williamson-d051b8-6e"); a user/AI-set name has a different/absent source.
+    public let nameSource: String?
     public let kind: String?           // "interactive" | ...
     public let version: String?
     public let entrypoint: String?
@@ -52,6 +55,7 @@ public enum ClaudeLiveCollector {
             cwd: cwd,
             status: (raw["status"] as? String) ?? "idle",
             name: raw["name"] as? String,
+            nameSource: raw["nameSource"] as? String,
             kind: raw["kind"] as? String,
             version: raw["version"] as? String,
             entrypoint: raw["entrypoint"] as? String,
