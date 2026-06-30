@@ -151,7 +151,8 @@ public struct UnifiedSession: Identifiable, Sendable {
             // A live interactive Claude session sitting at the prompt = "your turn".
             // A saved Desktop session (no running process, pid == nil) is just idle.
             return (source.isClaude && pid != nil) ? .awaitingYou : .idle
-        case .shell:   return .idle      // dropped to a shell inside the session
+        case .shell:   return .working   // running a shell command (e.g. a long subprocess like a
+                                         // `codex` review) — the session is busy, not idle
         case .unknown: return .unknown
         }
     }
