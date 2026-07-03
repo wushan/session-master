@@ -24,6 +24,22 @@ struct SessionRowView: View {
 
     private var rowVPad: CGFloat { isChild ? 5 : 7 }
 
+    /// Stale fade, except for rows that still need the user (see the modifiers below).
+    private var faded: Bool { session.isStale && !session.attention.needsUser }
+
+    /// Saved Desktop sessions: the primary click resumes in a terminal (targeted) instead of
+    /// blindly foregrounding Claude.app (which shows whatever conversation was last open).
+    private var prefersResumeOnTap: Bool {
+        session.source == .claudeDesktop && session.pid == nil && session.canResume
+    }
+
+    private var primaryActionHint: String {
+        if prefersResumeOnTap { return "Click to resume in Terminal" }
+        if session.canRecall { return "Click to recall" }
+        if session.canResume { return "Click to resume in Terminal" }
+        return ""
+    }
+
     var body: some View {
         // The whole row recalls; action buttons overlay the top-right on hover so the content
         // (title / path / subtitle) gets the full width.
@@ -50,6 +66,12 @@ struct SessionRowView: View {
                         else if session.isRoutineRun { scheduleBadge("routine", .teal) }
                         if subagentCount > 0 { subagentChip }
                         prChip
+                        // Actions live IN the line (after a spacer), not overlaid on it — an
+                        // overlay would sit exactly on top of the chips and steal their clicks.
+                        if hovering, !editing {
+                            Spacer(minLength: 6)
+                            actions
+                        }
                     }
                 }
                 metaLine
@@ -70,7 +92,11 @@ struct SessionRowView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if session.canRecall { onRecall() }
+            // A saved Desktop row's "recall" can only foreground Claude.app without navigating to
+            // this conversation — resume-in-terminal is the only action that provably lands in the
+            // clicked session, so it takes the primary click (recall stays in the context menu).
+            if prefersResumeOnTap { onResume?() }
+            else if session.canRecall { onRecall() }
             else if session.canResume { onResume?() }
         }
         .pointerCursor(session.canRecall || session.canResume)
@@ -78,12 +104,13 @@ struct SessionRowView: View {
         // Rounded hover fill as a background (not a clip) so the timeline rail isn't cut at the
         // row edges — it runs straight into the next row.
         .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.06) : .clear))
-        .overlay(alignment: .topTrailing) { if hovering { actions.padding(.top, 6).padding(.trailing, 8) } }
         // Old sessions (>48h idle) fade to grayscale so the live ones stand out — still clickable.
-        .saturation(session.isStale && !editing ? 0 : 1)
-        .opacity(session.isStale && !hovering && !editing ? 0.5 : 1)
+        // Rows that NEED the user are exempt: fading a red "needs approval" dot to gray would hide
+        // the very signal the sort and the menu-bar badge are advertising.
+        .saturation(faded && !editing ? 0 : 1)
+        .opacity(faded && !hovering && !editing ? 0.5 : 1)
         .onHover { hovering = $0 }
-        .help(session.canRecall ? "Click to recall" : (session.canResume ? "Click to resume in Terminal" : ""))
+        .help(primaryActionHint)
         .contextMenu {
             Button("Rename…") { draft = session.displayTitle; editing = true }
             if session.rich.customTitle != nil {

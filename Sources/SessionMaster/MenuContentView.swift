@@ -45,16 +45,20 @@ struct MenuContentView: View {
                 Text(search.isEmpty ? "No active sessions" : "No matches").foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 24)
             } else {
+                // Height must be sized to the TREE rows actually rendered — the flat session
+                // count includes claimed companions (collapsed children), which would reserve
+                // ~84pt of permanent blank space each.
+                let nodes = SessionTree.build(sessions, extraChildren: store.subagentChildren)
                 ScrollView {
                     VStack(spacing: 4) {
-                        ForEach(SessionTree.build(sessions, extraChildren: store.subagentChildren)) { node in
+                        ForEach(nodes) { node in
                             SessionNodeView(node: node, expanded: $expanded, store: store)
                         }
                     }.padding(8)
                 }
                 // ScrollView has no intrinsic height inside a self-sizing menu-bar
                 // window, so it collapses to 0. Give it a concrete, content-aware height.
-                .frame(height: min(CGFloat(sessions.count) * 84 + 16, 520))
+                .frame(height: min(CGFloat(nodes.count) * 84 + 16, 520))
             }
             if !store.jobs.isEmpty {
                 Divider()

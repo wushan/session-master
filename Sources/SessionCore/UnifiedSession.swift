@@ -60,6 +60,11 @@ public struct UnifiedSession: Identifiable, Sendable {
     public let isAutomationRun: Bool     // a Codex automation execution (vs a manual session)
     public let scheduledTaskId: String?  // set when a Claude routine (scheduled task) spawned this
     public let isEnded: Bool             // CLI process is gone — show "Resume" instead of "Recall"
+    public let kind: String?             // Claude session kind: "interactive" | "bg" | "daemon" | …
+    /// True when `status` wasn't reported by the tool but assumed (e.g. an argv-detected resume
+    /// writes no live-state file; its busy/idle is inferred from the transcript mtime). Assumed
+    /// idle must not be promoted to "your turn".
+    public let statusAssumed: Bool
 
     /// This session was started by a Claude routine, not a person.
     public var isRoutineRun: Bool { scheduledTaskId != nil }
@@ -71,7 +76,8 @@ public struct UnifiedSession: Identifiable, Sendable {
                 model: String?, effort: String?, branch: String?, worktreeName: String?,
                 originator: String?, status: Status, waitingFor: String?,
                 terminal: TerminalInfo, updatedAt: Date?, isAutomationRun: Bool = false,
-                scheduledTaskId: String? = nil, isEnded: Bool = false, nameSource: String? = nil) {
+                scheduledTaskId: String? = nil, isEnded: Bool = false, nameSource: String? = nil,
+                kind: String? = nil, statusAssumed: Bool = false) {
         self.id = id; self.source = source; self.pid = pid; self.cwd = cwd; self.name = name
         self.nameSource = nameSource
         self.title = title; self.model = model; self.effort = effort; self.branch = branch
@@ -79,6 +85,7 @@ public struct UnifiedSession: Identifiable, Sendable {
         self.waitingFor = waitingFor; self.terminal = terminal; self.updatedAt = updatedAt
         self.isAutomationRun = isAutomationRun; self.scheduledTaskId = scheduledTaskId
         self.isEnded = isEnded
+        self.kind = kind; self.statusAssumed = statusAssumed
     }
 
     /// Project name, stripping the worktree suffix so sessions group by repo.
@@ -119,7 +126,13 @@ public struct UnifiedSession: Identifiable, Sendable {
     public var worktreeKey: String? {
         if let w = cwdWorktreeName { return w }
         if let w = worktreeName, !w.isEmpty { return w }
-        if let n = name, !n.isEmpty { return n }
+        // The session name only counts as a worktree link when a worktree of that name actually
+        // exists in this repo — names drift to whatever the user/AI called the task, and a bare
+        // name fallback would let a same-named repo-root session hijack byWorktree matches.
+        if let n = name, !n.isEmpty,
+           FileManager.default.fileExists(atPath: projectRoot + "/.claude/worktrees/" + n) {
+            return n
+        }
         return nil
     }
     /// No interaction for >48h — shown dimmed/grayscale (still recallable) to mark it as old.
@@ -148,9 +161,13 @@ public struct UnifiedSession: Identifiable, Sendable {
         case .waiting: return .needsApproval
         case .busy:    return .working
         case .idle:
-            // A live interactive Claude session sitting at the prompt = "your turn".
-            // A saved Desktop session (no running process, pid == nil) is just idle.
-            return (source.isClaude && pid != nil) ? .awaitingYou : .idle
+            // A live interactive Claude session sitting at the prompt = "your turn". Only when
+            // the CLI actually *reported* idle, though: an assumed status (argv-detected resume)
+            // and non-interactive kinds (bg/daemon — no prompt awaits anyone) stay plain idle.
+            // A saved Desktop session (no running process, pid == nil) is just idle too.
+            if source.isClaude, pid != nil, !statusAssumed,
+               (kind ?? "interactive") == "interactive" { return .awaitingYou }
+            return .idle
         case .shell:   return .working   // running a shell command (e.g. a long subprocess like a
                                          // `codex` review) — the session is busy, not idle
         case .unknown: return .unknown
@@ -174,7 +191,9 @@ public struct UnifiedSession: Identifiable, Sendable {
         if source == .claudeDesktop, pid == nil { return true }   // saved → resume in a terminal
         // A Codex CLI thread is resumable only once its terminal is gone — while it's live, recall
         // it instead (resuming a running thread would attach a second TUI to the same rollout).
-        if source == .codexCLI { return !canRecall }
+        // The busy guard covers the correlation gaps: an actively-written rollout always has a
+        // writer attached, even when no TUI process could be matched to it.
+        if source == .codexCLI { return !canRecall && status != .busy }
         return false
     }
 
@@ -205,23 +224,38 @@ public enum SessionAggregator {
         let resumed = claudeResumeSessions(excluding: jsonLiveIds)
         let liveIds = jsonLiveIds.union(resumed.map(\.id))
         let desktop = desktopStandalone(excluding: liveIds)
-        let codexRaw = filterCodex(CodexSessionCollector.recent())
-        let codex = codexRaw.map(unified(from:))
+        let codexAll = CodexSessionCollector.recent()
+        var codexRaw = filterCodex(codexAll)
+        let (codexLive, codexExtra) = correlateCodexProcesses(rollouts: codexRaw)
+        codexRaw += codexExtra   // open TUIs whose rollout aged out of the window
+        let codex = codexRaw.map { unified(from: $0, live: codexLive[$0.id]) }
         var subagents: [String: [UnifiedSession]] = [:]
         for c in codexRaw {
             let subs = CodexSubagentScanner.scan(rollout: c.url)
             if !subs.isEmpty { subagents[c.id] = subs.map { subagentSession($0, parent: c) } }
+        }
+        // New-format Codex sub-agents: the CHILD rollout carries parent_thread_id (its parent
+        // contains no spawn_agent record at all) — surface the recently-active ones as children.
+        for c in codexAll where c.threadSource == "subagent" {
+            guard let parent = c.parentThreadId,
+                  Date().timeIntervalSince(c.mtime) < codexSubagentWindow,
+                  !(subagents[parent]?.contains { $0.id == c.id } ?? false) else { continue }
+            subagents[parent, default: []].append(codexSubagentChild(c))
         }
         // Under each live Claude session (json-live + argv-resumed): nest its currently-running
         // dynamic Workflow runs and standalone Task sub-agents (finished ones are omitted).
         for p in (claude + resumed) {
             var kids = ClaudeWorkflowScanner.scan(sessionId: p.id, cwd: p.cwd).map { workflowSession($0, parent: p) }
             kids += ClaudeSubagentScanner.scan(sessionId: p.id, cwd: p.cwd).map { subagentSession($0, parent: p) }
-            if !kids.isEmpty { subagents[p.id] = kids }
+            if !kids.isEmpty { subagents[p.id, default: []] = kids + (subagents[p.id] ?? []) }
         }
         // Recently-ended Claude CLI sessions (terminal closed) — resumable, not currently shown.
+        // Sessions the user archived in Desktop stay hidden: resurfacing one as an "Ended — resume"
+        // row (under its AI title, no less) would undo the archiving.
+        let archived = ClaudeDesktopCollector.archivedCliIds()
         let shownIds = Set((claude + resumed + desktop).map(\.id))
-        let ended = ClaudeEndedCollector.recent(excluding: shownIds).compactMap(endedSession(from:))
+        let ended = ClaudeEndedCollector.recent(excluding: shownIds.union(archived))
+            .compactMap(endedSession(from:))
 
         var sessions = claude + resumed + codex + desktop + ended
         // Belt-and-suspenders: never emit two sessions sharing an id (SwiftUI Identifiable).
@@ -233,6 +267,9 @@ public enum SessionAggregator {
             let dir = GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
             sessions[i].rich.git = GitStatusCollector.status(dir: dir)
             if let b = s.branch, !b.isEmpty, b != "HEAD", let pr = PRStatus.forBranch(b, repoDir: dir) {
+                // Keep the chip and its click target consistent: when gh's PR differs from the
+                // transcript's pr-link marker, gh's URL replaces the stale one alongside its number.
+                if sessions[i].rich.prNumber != pr.number { sessions[i].rich.prURL = pr.url }
                 sessions[i].rich.prNumber = pr.number
                 sessions[i].rich.prURL = sessions[i].rich.prURL ?? pr.url
                 sessions[i].rich.prState = pr.displayState
@@ -242,10 +279,82 @@ public enum SessionAggregator {
         return (sessions.sorted(by: order), subagents)
     }
 
-    /// Ended Claude CLI sessions (beyond the default recency window) whose transcript matches the
-    /// search query — for finding/resuming an older closed session by typing in the dashboard.
+    /// Ended sessions (beyond the default recency window) whose record matches the search query —
+    /// for finding/resuming an older closed session by typing in the dashboard. Covers Claude
+    /// transcripts and Codex rollouts; Desktop-archived conversations stay hidden here too.
     public static func searchEndedSessions(query: String, excluding: Set<String>) -> [UnifiedSession] {
-        ClaudeEndedCollector.matching(query: query, excluding: excluding).compactMap(endedSession(from:))
+        let excl = excluding.union(ClaudeDesktopCollector.archivedCliIds())
+        return ClaudeEndedCollector.matching(query: query, excluding: excl).compactMap(endedSession(from:))
+            + codexMatching(query: query, excluding: excl)
+    }
+
+    /// Codex rollouts across the 14-day scan window whose title / cwd / branch matches `query` —
+    /// the Codex counterpart of ClaudeEndedCollector.matching. Only user threads (no automations,
+    /// sub-agents, or claude-driven companions), newest first, capped.
+    static func codexMatching(query: String, excluding: Set<String>, limit: Int = 20) -> [UnifiedSession] {
+        let q = query.lowercased()
+        guard q.count >= 2 else { return [] }
+        let titles = CodexSessionCollector.threadTitles()
+        var out: [UnifiedSession] = []
+        var scanned = 0
+        for (url, m) in CodexSessionCollector.candidates() {
+            scanned += 1
+            if scanned > 200 || out.count >= limit { break }
+            guard let c = CodexSessionCollector.parse(url, mtime: m, titles: titles),
+                  !excluding.contains(c.id),
+                  c.threadSource == nil || c.threadSource == "user",
+                  !SessionTree.claudeDriven.contains(c.originator ?? "") else { continue }
+            let hay = [c.title, c.cwd, c.branch].compactMap { $0 }.joined(separator: "\u{1}").lowercased()
+            if hay.contains(q) { out.append(unified(from: c, live: nil)) }
+        }
+        return out
+    }
+
+    /// Match live interactive `codex` TUI processes to their rollouts: an explicit
+    /// `codex resume <id>` names its rollout directly; a plain `codex` TUI is matched to the
+    /// newest user-thread rollout in its cwd. This is what lets a Codex row be *recalled* (it has
+    /// a real terminal) instead of wrongly offered a second-TUI "resume".
+    ///
+    /// A process whose rollout fell outside the recency window (a TUI left open but idle for
+    /// days) PULLS its rollout back in via `extra` — an open terminal must never be invisible.
+    static func correlateCodexProcesses(rollouts: [CodexSession])
+        -> (live: [String: (pid: pid_t, terminal: TerminalInfo)], extra: [CodexSession]) {
+        let procs = ProcessCollector.codexTUIProcesses()
+        guard !procs.isEmpty else { return ([:], []) }
+        let terms = ProcessCollector.correlateTerminals(pids: procs.map(\.pid))
+        let byId = Dictionary(rollouts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var out: [String: (pid: pid_t, terminal: TerminalInfo)] = [:]
+        var extra: [CodexSession] = []
+        func tuiEligible(_ c: CodexSession) -> Bool {
+            c.originator != "Codex Desktop"
+                && !SessionTree.claudeDriven.contains(c.originator ?? "")
+                && (c.threadSource == nil || c.threadSource == "user")
+        }
+        for p in procs {
+            var target: CodexSession?
+            if let rid = p.resumeId { target = byId[rid] }
+            if target == nil {
+                // Newest TUI-eligible rollout in the process's cwd (companions/automations are
+                // driven by something else; Desktop threads live inside Codex.app).
+                target = rollouts.filter { $0.cwd == p.cwd && tuiEligible($0) }
+                    .max { $0.mtime < $1.mtime }
+            }
+            if target == nil {
+                // Not in the window — walk the full 14-day candidate list (newest first; parses
+                // are mtime-cached, so this costs one pass ever, not one per poll).
+                let titles = CodexSessionCollector.threadTitles()
+                for (url, m) in CodexSessionCollector.candidates() {
+                    guard let c = CodexSessionCollector.parse(url, mtime: m, titles: titles)
+                    else { continue }
+                    if let rid = p.resumeId { if c.id == rid { target = c; break } }
+                    else if c.cwd == p.cwd, tuiEligible(c) { target = c; break }
+                }
+                if let t = target { extra.append(t) }
+            }
+            guard let target, out[target.id] == nil else { continue }
+            out[target.id] = (p.pid, terms[p.pid] ?? .dead)
+        }
+        return (out, extra)
     }
 
     /// A recently-ended Claude CLI session, reconstructed from its transcript so it can be resumed.
@@ -253,7 +362,8 @@ public enum SessionAggregator {
         guard let cwd = e.history.cwd, !cwd.isEmpty else { return nil }
         let h = e.history
         var u = UnifiedSession(
-            id: e.sessionId, source: .claudeCLI, pid: nil, cwd: cwd, name: nil, title: h.aiTitle,
+            id: e.sessionId, source: .claudeCLI, pid: nil, cwd: cwd, name: nil,
+            title: h.customTitle ?? h.aiTitle,   // the user's explicit rename outranks the AI title
             model: h.model, effort: nil, branch: h.branch, worktreeName: nil, originator: nil,
             status: .idle, waitingFor: nil, terminal: .dead, updatedAt: e.updatedAt, isEnded: true)
         u.rich.aiTitle = h.aiTitle; u.rich.lastPrompt = h.lastPrompt
@@ -323,24 +433,32 @@ public enum SessionAggregator {
                 originator: nil,
                 status: UnifiedSession.Status(rawValue: s.status) ?? .unknown,
                 waitingFor: s.waitingFor, terminal: t, updatedAt: s.updatedAt,
-                scheduledTaskId: scheduledTaskId, nameSource: s.nameSource)
+                scheduledTaskId: scheduledTaskId, nameSource: s.nameSource, kind: s.kind)
             u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
             u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
-            u.rich.contextPercent = h?.contextPercent
+            // The merged model may carry the "[1m]" marker (Desktop store) that the transcript
+            // never has — recompute the % against the true window when it does.
+            u.rich.contextPercent = ClaudeHistoryEnricher.contextPercent(history: h, model: model)
             return u
         }
     }
 
-    /// Live Claude CLI sessions found by reading process argv (`claude --resume <id>`), for the
-    /// case where the CLI wrote no `~/.claude/sessions/{pid}.json` — e.g. a terminal resume of a
-    /// Desktop-origin session. Excludes ids already surfaced from the live-state files.
+    /// Live Claude CLI sessions found by reading process argv, for the case where the CLI wrote
+    /// no `~/.claude/sessions/{pid}.json` — e.g. a terminal resume of a Desktop-origin session.
+    /// `claude --resume <id>` names its session directly; the id-less takeover forms
+    /// (`--continue`, `-c`, the `-r` picker) are resolved to the transcript the process has been
+    /// appending to since it started. Excludes ids already surfaced from the live-state files.
     ///
-    /// Status is reported as a stable `.idle` (→ "your turn" for a live interactive Claude session),
-    /// NOT inferred busy/idle from the transcript mtime: a mtime heuristic would flip busy↔idle and
-    /// fire a spurious "your turn" notification whenever a turn pauses (e.g. a slow tool run). The
-    /// mtime is still used for `updatedAt` so the row sorts correctly and isn't shown as stale.
+    /// Status is *assumed* from the transcript mtime (recent writes → working, else idle) and
+    /// flagged `statusAssumed`, so an assumed idle renders as plain "Idle" — never a false
+    /// "Your turn" — and can't fire turn-completion notifications.
     static func claudeResumeSessions(excluding existing: Set<String>) -> [UnifiedSession] {
-        let procs = ProcessCollector.claudeResumeProcesses().filter { !existing.contains($0.sessionId) }
+        var procs: [(pid: pid_t, sessionId: String)] = []
+        for p in ProcessCollector.claudeResumeProcesses() {
+            guard let sid = p.sessionId ?? resolveTakenOverSession(pid: p.pid),
+                  !existing.contains(sid) else { continue }
+            procs.append((p.pid, sid))
+        }
         guard !procs.isEmpty else { return [] }
         let terms = ProcessCollector.correlateTerminals(pids: procs.map(\.pid))
         let desktop = ClaudeDesktopCollector.indexByCliSessionId()
@@ -350,36 +468,72 @@ public enum SessionAggregator {
             guard !cwd.isEmpty else { return nil }
             let mtime = ClaudeHistoryEnricher.transcriptMtime(sessionId: p.sessionId, cwd: cwd)
             let h = ClaudeHistoryEnricher.enrich(sessionId: p.sessionId, cwd: cwd)
+            let model = d?.model ?? h?.model
+            let busy = mtime.map { Date().timeIntervalSince($0) < 90 } ?? false
             var u = UnifiedSession(
                 id: p.sessionId, source: .claudeCLI, pid: p.pid, cwd: cwd,
                 name: nil, title: d?.title,
-                model: d?.model ?? h?.model, effort: d?.effort,
+                model: model, effort: d?.effort,
                 branch: d?.branch ?? h?.branch, worktreeName: d?.worktreeName,
-                originator: nil, status: .idle,
+                originator: nil, status: busy ? .busy : .idle,
                 waitingFor: nil, terminal: terms[p.pid] ?? .dead,
-                updatedAt: mtime ?? d?.lastActivityAt, scheduledTaskId: d?.scheduledTaskId)
+                updatedAt: mtime ?? d?.lastActivityAt, scheduledTaskId: d?.scheduledTaskId,
+                statusAssumed: true)
             u.rich.aiTitle = h?.aiTitle; u.rich.lastPrompt = h?.lastPrompt
             u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
-            u.rich.contextPercent = h?.contextPercent
+            u.rich.contextPercent = ClaudeHistoryEnricher.contextPercent(history: h, model: model)
             return u
         }
+    }
+
+    /// The session an id-less takeover (`claude --continue` / `-c` / `-r` picker) is attached to:
+    /// the newest transcript in the process's cwd that has been written since the process started
+    /// (the CLI appends to its transcript as soon as it loads one).
+    static func resolveTakenOverSession(pid: pid_t) -> String? {
+        guard let cwd = ProcessCollector.cwd(of: pid),
+              let started = ProcessCollector.startTime(of: pid) else { return nil }
+        let dir = ClaudeHistoryEnricher.projectsDir
+            .appendingPathComponent(ClaudeHistoryEnricher.encode(cwd: cwd))
+        guard let files = try? FileManager.default.contentsOfDirectory(at: dir,
+                includingPropertiesForKeys: [.contentModificationDateKey]) else { return nil }
+        return files
+            .filter { $0.pathExtension == "jsonl"
+                && UUID(uuidString: $0.deletingPathExtension().lastPathComponent) != nil }
+            .compactMap { u -> (String, Date)? in
+                guard let m = (try? u.resourceValues(forKeys: [.contentModificationDateKey]))?
+                        .contentModificationDate, m >= started else { return nil }
+                return (u.deletingPathExtension().lastPathComponent, m)
+            }
+            .max { $0.1 < $1.1 }?.0
     }
 
     // MARK: Codex (recent rollouts)
 
     public static func codexSessions() -> [UnifiedSession] {
-        filterCodex(CodexSessionCollector.recent()).map(unified(from:))
+        var rollouts = filterCodex(CodexSessionCollector.recent())
+        let (live, extra) = correlateCodexProcesses(rollouts: rollouts)
+        rollouts += extra
+        return rollouts.map { unified(from: $0, live: live[$0.id]) }
     }
 
     /// How long an automation run stays visible after its last activity, so you can follow up
     /// on a just-finished automation. Stale runs drop off (they live in the Automations tab).
     static let automationActiveWindow: TimeInterval = 30 * 60
+    /// Claude-driven companions render as children of their driving session — after this long
+    /// without activity they're finished context, not worth a child row.
+    static let companionActiveWindow: TimeInterval = 3 * 3600
+    /// A CLI rollout with no attached TUI process and no recent writes is a closed thread —
+    /// shown as "Ended — resume" (like Claude's ended sessions) rather than a live row.
+    static let codexEndedAfter: TimeInterval = 30 * 60
+    /// New-format sub-agent rollouts (parent_thread_id) count as running children this long.
+    static let codexSubagentWindow: TimeInterval = 30 * 60
 
     /// Drop bare sub-agent rollouts (shown nested). Keep manual sessions; keep automation runs
-    /// only while recently active, deduped to the latest per project so the list stays clean.
+    /// only while recently active, and claude-driven companion runs (codex exec / the Claude Code
+    /// plugin) deduped to the latest per worktree so repeated runs don't pile up as child rows.
     static func filterCodex(_ sessions: [CodexSession]) -> [CodexSession] {
         var latestAutomation: [String: CodexSession] = [:]
-        var latestExec: [String: CodexSession] = [:]
+        var latestCompanion: [String: CodexSession] = [:]
         var out: [CodexSession] = []
         for c in sessions {
             switch c.threadSource {
@@ -390,31 +544,49 @@ public enum SessionAggregator {
                 if let prev = latestAutomation[key], prev.mtime >= c.mtime { continue }
                 latestAutomation[key] = c
             default:
-                // Each `codex exec` invocation writes a fresh rollout, so repeated runs pile up on
-                // the same worktree. Keep only the latest per (cwd, branch); SessionTree then nests
-                // it under the driving Claude session.
-                if c.originator == "codex_exec" {
+                if SessionTree.claudeDriven.contains(c.originator ?? "") {
+                    guard Date().timeIntervalSince(c.mtime) < companionActiveWindow else { continue }
                     let key = c.cwd + "\u{1}" + (c.branch ?? "")
-                    if let prev = latestExec[key], prev.mtime >= c.mtime { continue }
-                    latestExec[key] = c
+                    if let prev = latestCompanion[key], prev.mtime >= c.mtime { continue }
+                    latestCompanion[key] = c
                 } else {
                     out.append(c)
                 }
             }
         }
-        return out + latestAutomation.values + latestExec.values
+        return out + latestAutomation.values + latestCompanion.values
     }
 
-    static func unified(from c: CodexSession) -> UnifiedSession {
-        UnifiedSession(
+    static func unified(from c: CodexSession,
+                        live: (pid: pid_t, terminal: TerminalInfo)?) -> UnifiedSession {
+        let isDesktop = c.originator == "Codex Desktop"
+        // Companions/automations are transient by nature; user CLI threads with no attached TUI
+        // and no recent writes are closed → resumable, mirroring Claude's ended sessions.
+        let ended = !isDesktop && live == nil
+            && !SessionTree.claudeDriven.contains(c.originator ?? "")
+            && c.threadSource != "automation"
+            && Date().timeIntervalSince(c.mtime) > codexEndedAfter
+        return UnifiedSession(
             id: c.id,
-            source: (c.originator == "Codex Desktop") ? .codexDesktop : .codexCLI,
-            pid: nil, cwd: c.cwd, name: nil, title: c.title,
+            source: isDesktop ? .codexDesktop : .codexCLI,
+            pid: live?.pid, cwd: c.cwd, name: nil, title: c.title,
             model: c.model, effort: c.effort, branch: c.branch, worktreeName: nil,
             originator: c.originator,
             status: codexStatus(mtime: c.mtime),
-            waitingFor: nil, terminal: .dead, updatedAt: c.mtime,
-            isAutomationRun: c.threadSource == "automation")
+            waitingFor: nil, terminal: live?.terminal ?? .dead, updatedAt: c.mtime,
+            isAutomationRun: c.threadSource == "automation",
+            isEnded: ended)
+    }
+
+    /// A new-format Codex sub-agent (its rollout carries parent_thread_id) as a child row.
+    static func codexSubagentChild(_ c: CodexSession) -> UnifiedSession {
+        UnifiedSession(
+            id: c.id, source: .codexCLI, pid: nil, cwd: c.cwd, name: nil,
+            title: c.title ?? c.subagentRole.map { "codex \($0)" },
+            model: c.model, effort: c.effort, branch: c.branch, worktreeName: nil,
+            originator: "subagent",
+            status: codexStatus(mtime: c.mtime),
+            waitingFor: nil, terminal: .dead, updatedAt: c.mtime)
     }
 
     /// A Codex sub-agent shown as a child row (not a recallable window of its own).
@@ -439,7 +611,9 @@ public enum SessionAggregator {
             status: .busy, waitingFor: nil, terminal: .dead, updatedAt: w.startedAt)
     }
 
-    /// A Claude sub-agent (Task tool) shown as a child row under its parent session.
+    /// A Claude sub-agent (Task tool) shown as a child row under its parent session. The scanner's
+    /// liveness window already guarantees these are running, so they show as working (a gray
+    /// "idle" dot on a by-definition-active agent reads as stuck).
     static func subagentSession(_ s: ClaudeSubagent, parent p: UnifiedSession) -> UnifiedSession {
         UnifiedSession(
             id: s.id,
@@ -447,7 +621,7 @@ public enum SessionAggregator {
             pid: nil, cwd: p.cwd, name: s.description.isEmpty ? s.agentType : s.description,
             title: nil, model: nil, effort: nil, branch: p.branch, worktreeName: p.worktreeName,
             originator: "subagent",
-            status: .idle, waitingFor: nil, terminal: .dead, updatedAt: s.updatedAt)
+            status: .busy, waitingFor: nil, terminal: .dead, updatedAt: s.updatedAt)
     }
 
     /// Codex has no status field; approximate from how recently the rollout was written.

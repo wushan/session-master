@@ -53,9 +53,11 @@ public enum PRStatus {
         lock.lock(); defer { lock.unlock() }
         if let map {
             repoCache[slug] = (Date(), map)                       // success → fresh for the full TTL
-        } else if repoCache[slug] != nil {
+        } else {
             // Failure: short backoff (retry ~30s) instead of locking out for the full 5 min, while
-            // keeping whatever good data we already had — don't surface a transient gh hiccup as "no PR".
+            // keeping whatever good data we already had — don't surface a transient gh hiccup as
+            // "no PR". Seeded even on a first-ever failure (offline launch, gh logged out):
+            // without an entry, forBranch would respawn a gh process on every 2s tick, forever.
             let keep = repoCache[slug]?.map ?? [:]
             repoCache[slug] = (Date().addingTimeInterval(-(ttl - 30)), keep)
         }

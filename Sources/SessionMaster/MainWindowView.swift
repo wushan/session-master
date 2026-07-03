@@ -84,15 +84,20 @@ struct MainWindowView: View {
         window?.level = settings.dashboardAlwaysOnTop ? .floating : .normal
     }
 
-    /// Shrink a legacy oversized window down to the new narrow default, once. Leaves windows the
-    /// user has sized themselves alone (only touches clearly-too-wide ones).
+    /// Shrink a legacy oversized window down to the new narrow default — once per install
+    /// (persisted in UserDefaults: the @State flag resets on every window recreation, which would
+    /// re-shrink a window the user deliberately widened past 520pt on each reopen).
     private func applyInitialSize() {
         guard !didSetInitialSize, let window else { return }
         didSetInitialSize = true
-        var f = window.frame
-        if f.size.width > 520 {
-            f.size.width = 430
-            window.setFrame(f, display: true, animate: false)
+        let migrationKey = "didShrinkLegacyWindow"
+        if !UserDefaults.standard.bool(forKey: migrationKey) {
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            var f = window.frame
+            if f.size.width > 520 {
+                f.size.width = 430
+                window.setFrame(f, display: true, animate: false)
+            }
         }
         // AppKit makes the first text field (the Filter box) the window's first responder when it
         // opens — drop that so the dashboard doesn't open with the search field focused.
@@ -243,7 +248,10 @@ struct MainWindowView: View {
         case .codex: if !s.source.isCodex { return false }
         }
         guard !search.isEmpty else { return true }
-        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd]
+        // subtitle (last prompt / AI title) included: searchOlder finds out-of-window sessions BY
+        // last prompt — omitting it here would drop exactly what that scan matched (and disagree
+        // with the popover's haystack).
+        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
             .compactMap { $0 }.joined(separator: " ")
         return hay.localizedCaseInsensitiveContains(search)
     }

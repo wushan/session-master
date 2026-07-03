@@ -33,22 +33,30 @@ public enum ProcessCollector {
         guard sysctl(&mib, u_int(mib.count), nil, &size, nil, 0) == 0, size > 0 else { return [] }
 
         let stride = MemoryLayout<kinfo_proc>.stride
-        var procs = [kinfo_proc](repeating: kinfo_proc(), count: size / stride + 16)
-        var size2 = procs.count * stride
-        guard sysctl(&mib, u_int(mib.count), &procs, &size2, nil, 0) == 0 else { return [] }
-
-        let count = size2 / stride
-        return procs.prefix(count).map { kp in
-            var k = kp
-            let comm = withUnsafeBytes(of: &k.kp_proc.p_comm) { raw -> String in
-                guard let base = raw.bindMemory(to: CChar.self).baseAddress else { return "" }
-                return String(cString: base)
+        var capacity = size / stride + 16
+        // The table can grow between the size probe and the fetch (process-spawn bursts, e.g. a
+        // parallel build). Retry with a larger buffer instead of returning [] — an empty snapshot
+        // would blank every session's terminal info for a tick and flip live CLI rows to Desktop.
+        for _ in 0..<3 {
+            var procs = [kinfo_proc](repeating: kinfo_proc(), count: capacity)
+            var size2 = procs.count * stride
+            if sysctl(&mib, u_int(mib.count), &procs, &size2, nil, 0) == 0 {
+                let count = size2 / stride
+                return procs.prefix(count).map { kp in
+                    var k = kp
+                    let comm = withUnsafeBytes(of: &k.kp_proc.p_comm) { raw -> String in
+                        guard let base = raw.bindMemory(to: CChar.self).baseAddress else { return "" }
+                        return String(cString: base)
+                    }
+                    return ProcRecord(pid: kp.kp_proc.p_pid,
+                                      ppid: kp.kp_eproc.e_ppid,
+                                      comm: comm,
+                                      tdev: kp.kp_eproc.e_tdev)
+                }
             }
-            return ProcRecord(pid: kp.kp_proc.p_pid,
-                              ppid: kp.kp_eproc.e_ppid,
-                              comm: comm,
-                              tdev: kp.kp_eproc.e_tdev)
+            capacity = capacity * 3 / 2
         }
+        return []
     }
 
     // MARK: - Public correlation API
@@ -143,12 +151,27 @@ public enum ProcessCollector {
         kill(pid, 0) == 0 || errno == EPERM
     }
 
+    /// The process's actual start time — the pid-recycling disambiguator. `isAlive` alone can't
+    /// tell "the claude that wrote this file" from "whatever now owns its recycled pid" (kill(0)
+    /// even returns EPERM for another user's process); comparing start times can.
+    public static func startTime(of pid: pid_t) -> Date? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0, size > 0,
+              info.kp_proc.p_pid == pid else { return nil }
+        let tv = info.kp_proc.p_starttime
+        return Date(timeIntervalSince1970: Double(tv.tv_sec) + Double(tv.tv_usec) / 1_000_000)
+    }
+
     // MARK: - argv-based resume detection
 
-    /// A live `claude --resume <id>` CLI process recovered from argv.
+    /// A live `claude --resume <id>` / `--continue` CLI process recovered from argv.
+    /// `sessionId` is nil for the id-less forms (`--continue`, `-c`, the bare `-r` picker) —
+    /// the aggregator resolves those to the transcript the process is actually appending to.
     public struct ResumeProcess: Sendable {
         public let pid: pid_t
-        public let sessionId: String
+        public let sessionId: String?
     }
 
     /// Read a process's full argv via `KERN_PROCARGS2`. nil if not available/permitted.
@@ -174,25 +197,73 @@ public enum ProcessCollector {
         return args
     }
 
-    /// Find live `claude --resume <id>` processes. The CLI does not always write
+    /// Find live `claude` resume/continue processes. The CLI does not always write
     /// `~/.claude/sessions/{pid}.json` (notably when resuming a Desktop-origin session in a
-    /// terminal), so the live-state files miss them; reading argv recovers the session id + pid.
+    /// terminal), so the live-state files miss them; reading argv recovers the pid, and the
+    /// session id when the invocation carried one. All takeover forms are matched — `--resume <id>`,
+    /// `--resume=<id>`, `-r <id>`, and the id-less `--continue` / `-c` / bare `-r` picker (whose
+    /// session id the aggregator resolves from the transcript the process appends to). A bare
+    /// positional UUID is treated by the CLI as a prompt, not a resume, so it is not matched.
     public static func claudeResumeProcesses() -> [ResumeProcess] {
         var out: [ResumeProcess] = []
         for rec in snapshot() {
             // Cheap candidate filter before reading argv: claude either keeps p_comm "claude" or
             // renames it to its version string ("2.1.193", starts with a digit). Skip the rest.
             guard rec.comm.lowercased() == "claude" || (rec.comm.first?.isNumber ?? false) else { continue }
-            // The CLI emits the space form `--resume <id>` / `-r <id>` (not `--resume=<id>`), so a
-            // plain index-of + next-arg lookup is sufficient. A bare positional UUID is treated by
-            // the CLI as a prompt, not a resume, so it is intentionally not matched.
             guard let argv = args(of: rec.pid), let exe = argv.first,
-                  exe.split(separator: "/").last?.lowercased().hasPrefix("claude") ?? false,
-                  let r = argv.firstIndex(where: { $0 == "--resume" || $0 == "-r" }),
-                  r + 1 < argv.count else { continue }
-            let id = argv[r + 1]
-            guard id.count == 36, UUID(uuidString: id) != nil else { continue }
-            out.append(ResumeProcess(pid: rec.pid, sessionId: id))
+                  exe.split(separator: "/").last?.lowercased().hasPrefix("claude") ?? false else { continue }
+            var isTakeover = false
+            var sid: String?
+            for (i, a) in argv.enumerated().dropFirst() {
+                if a == "--resume" || a == "-r" || a == "--continue" || a == "-c" {
+                    isTakeover = true
+                    if i + 1 < argv.count, isSessionUUID(argv[i + 1]) { sid = argv[i + 1] }
+                } else if a.hasPrefix("--resume=") || a.hasPrefix("-r=") {
+                    isTakeover = true
+                    let v = String(a.split(separator: "=", maxSplits: 1).last ?? "")
+                    if isSessionUUID(v) { sid = v }
+                }
+            }
+            guard isTakeover else { continue }
+            out.append(ResumeProcess(pid: rec.pid, sessionId: sid))
+        }
+        return out
+    }
+
+    static func isSessionUUID(_ s: String) -> Bool { s.count == 36 && UUID(uuidString: s) != nil }
+
+    // MARK: - Codex TUI detection
+
+    /// A live interactive `codex` TUI process (rollout liveness for Codex, which — unlike
+    /// Claude — writes no live pid/status file).
+    public struct CodexProcess: Sendable {
+        public let pid: pid_t
+        public let cwd: String
+        public let resumeId: String?    // `codex resume <id>` → the exact rollout id
+    }
+
+    /// Codex subcommands that are NOT an interactive TUI attached to a rollout the user works in
+    /// (headless exec runs, plugin/IDE servers, one-shot utilities).
+    static let codexNonTUI: Set<String> = ["exec", "e", "mcp", "mcp-server", "app-server",
+                                           "proto", "apply", "login", "logout", "sandbox",
+                                           "completion", "debug", "cloud"]
+
+    /// Find live interactive codex TUI processes (`codex`, `codex resume …`). Matched back to
+    /// rollouts by explicit resume id or by cwd, giving Codex sessions real liveness + a terminal
+    /// to recall — and preventing "Resume" from attaching a second TUI to a running thread.
+    public static func codexTUIProcesses() -> [CodexProcess] {
+        var out: [CodexProcess] = []
+        for rec in snapshot() where rec.comm == "codex" {
+            guard let argv = args(of: rec.pid), let exe = argv.first,
+                  exe.split(separator: "/").last?.lowercased() == "codex" else { continue }
+            // First non-flag arg = subcommand (nil for a plain `codex` TUI).
+            let sub = argv.dropFirst().first(where: { !$0.hasPrefix("-") })
+            if let sub, codexNonTUI.contains(sub) { continue }
+            var resumeId: String?
+            if sub == "resume", let i = argv.firstIndex(of: "resume"), i + 1 < argv.count,
+               isSessionUUID(argv[i + 1]) { resumeId = argv[i + 1] }
+            guard let cwd = cwd(of: rec.pid) else { continue }
+            out.append(CodexProcess(pid: rec.pid, cwd: cwd, resumeId: resumeId))
         }
         return out
     }

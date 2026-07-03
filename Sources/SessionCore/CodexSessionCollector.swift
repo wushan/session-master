@@ -7,13 +7,15 @@ public struct CodexSession: Sendable, Identifiable {
     public let id: String
     public let cwd: String
     public let branch: String?
-    public let originator: String?     // "Codex Desktop" | "VSCode" | "CLI" | "Claude Code"
+    public let originator: String?     // "Codex Desktop" | "codex-tui" | "codex_exec" | "Claude Code"
     public let model: String?
     public let effort: String?
     public var title: String?           // applied outside the rollout cache (renames independently)
     public let mtime: Date
     public let url: URL                 // rollout file (for sub-agent scanning)
     public let threadSource: String?    // "user" | "automation" | "subagent" | nil(companion)
+    public let parentThreadId: String?  // subagent rollouts: the spawning rollout's id
+    public let subagentRole: String?    // subagent rollouts: e.g. "review" (session_meta source.subagent)
 }
 
 public enum CodexSessionCollector {
@@ -26,23 +28,60 @@ public enum CodexSessionCollector {
 
     /// Recently-active sessions: rollouts modified within `within`, newest first, capped. The cap
     /// is generous so an active session (and its scanned sub-agents) isn't pushed off the list by
-    /// a burst of other rollouts.
-    public static func recent(within: TimeInterval = 3 * 3600, limit: Int = 60) -> [CodexSession] {
-        let fm = FileManager.default
+    /// a burst of other rollouts. 24h (not the old 3h) so a thread from this morning is still
+    /// resumable this afternoon — the aggregator decides live/ended per rollout.
+    public static func recent(within: TimeInterval = 24 * 3600, limit: Int = 60) -> [CodexSession] {
         let cutoff = Date().addingTimeInterval(-within)
-        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey]
-        guard let en = fm.enumerator(at: root, includingPropertiesForKeys: Array(keys)) else { return [] }
-
-        var candidates: [(URL, Date)] = []
-        for case let url as URL in en where url.pathExtension == "jsonl" {
-            guard let v = try? url.resourceValues(forKeys: keys),
-                  v.isRegularFile == true,
-                  let m = v.contentModificationDate, m >= cutoff else { continue }
-            candidates.append((url, m))
-        }
-        candidates.sort { $0.1 > $1.1 }
         let titles = threadTitles()
-        return candidates.prefix(limit).compactMap { parse($0.0, mtime: $0.1, titles: titles) }
+        return candidates().lazy.filter { $0.1 >= cutoff }.prefix(limit)
+            .compactMap { parse($0.0, mtime: $0.1, titles: titles) }
+    }
+
+    private static let scanLock = NSLock()
+    nonisolated(unsafe) private static var scanCache: (at: Date, items: [(URL, Date)])?
+    private static let rescan: TimeInterval = 15
+    /// How far back the directory walk looks (same idea as ClaudeEndedCollector.scanWindow) —
+    /// `recent` narrows from it, and search can span all of it.
+    static let scanWindow: TimeInterval = 14 * 86400
+
+    /// Recently-modified rollouts over `scanWindow`, newest first, cached for `rescan` seconds —
+    /// the store holds every rollout ever written (600+ and growing), so walking + stat-ing it
+    /// on every 2s tick is the expensive part, not the parsing (which is mtime-cached).
+    /// Date directories (YYYY/MM/DD) far older than the window are pruned by name; the margin is
+    /// generous because a long-lived rollout keeps its old creation dir while its mtime advances.
+    static func candidates() -> [(URL, Date)] {
+        scanLock.lock()
+        if let c = scanCache, Date().timeIntervalSince(c.at) < rescan { scanLock.unlock(); return c.items }
+        scanLock.unlock()
+
+        let fm = FileManager.default
+        let cutoff = Date().addingTimeInterval(-scanWindow)
+        let pruneBefore = Date().addingTimeInterval(-scanWindow - 30 * 86400)
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey, .isDirectoryKey]
+        let rootDepth = root.pathComponents.count
+        var found: [(URL, Date)] = []
+        if let en = fm.enumerator(at: root, includingPropertiesForKeys: Array(keys)) {
+            for case let url as URL in en {
+                if (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true {
+                    let comps = url.pathComponents
+                    if comps.count == rootDepth + 3,                       // a YYYY/MM/DD leaf dir
+                       let y = Int(comps[rootDepth]), let m = Int(comps[rootDepth + 1]),
+                       let d = Int(comps[rootDepth + 2]),
+                       let day = Calendar.current.date(from: DateComponents(year: y, month: m, day: d)),
+                       day < pruneBefore {
+                        en.skipDescendants()
+                    }
+                    continue
+                }
+                guard url.pathExtension == "jsonl",
+                      let v = try? url.resourceValues(forKeys: keys), v.isRegularFile == true,
+                      let m = v.contentModificationDate, m >= cutoff else { continue }
+                found.append((url, m))
+            }
+        }
+        found.sort { $0.1 > $1.1 }
+        scanLock.lock(); scanCache = (Date(), found); scanLock.unlock()
+        return found
     }
 
     static let cache = FileCache<CodexSession>()
@@ -76,7 +115,9 @@ public enum CodexSessionCollector {
         return CodexSession(id: id, cwd: cwd, branch: git?["branch"] as? String,
                             originator: p["originator"] as? String,
                             model: model, effort: effort, title: nil, mtime: mtime, url: url,
-                            threadSource: p["thread_source"] as? String)
+                            threadSource: p["thread_source"] as? String,
+                            parentThreadId: p["parent_thread_id"] as? String,
+                            subagentRole: (p["source"] as? [String: Any])?["subagent"] as? String)
     }
 
     private static let titlesLock = NSLock()

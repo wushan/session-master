@@ -46,7 +46,7 @@ public enum ClaudeEndedCollector {
             scanned += 1
             if scanned > 200 { break }
             guard let h = ClaudeHistoryEnricher.parse(c.url) else { continue }
-            let hay = [h.aiTitle, h.lastPrompt, h.branch, h.cwd].compactMap { $0 }
+            let hay = [h.customTitle, h.aiTitle, h.lastPrompt, h.branch, h.cwd].compactMap { $0 }
                 .joined(separator: "\u{1}").lowercased()
             if hay.contains(q) {
                 out.append(EndedClaudeSession(sessionId: c.sid, updatedAt: c.m, history: h))

@@ -18,6 +18,9 @@ public struct LiveClaudeSession: Sendable, Identifiable {
     public let version: String?
     public let entrypoint: String?
     public let waitingFor: String?
+    /// The owning process's start time in ctime format ("Wed Jul  1 06:50:48 2026") — written by
+    /// the CLI precisely to disambiguate pid recycling after a crash/reboot.
+    public let procStart: String?
     public let startedAt: Date?
     public let updatedAt: Date?
 
@@ -30,7 +33,11 @@ public enum ClaudeLiveCollector {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions")
     }
 
-    /// Parse every `*.json` under ~/.claude/sessions. Skips files whose pid is no longer alive.
+    /// Parse every `*.json` under ~/.claude/sessions. Skips files whose pid is no longer alive —
+    /// including recycled pids: a stale file left by a crash/power-loss whose pid was reassigned
+    /// to some other process must not resurrect as a phantom live session (frozen in its last
+    /// status, permanently blocking the real ended/resumable row). The CLI only unlinks these
+    /// files on graceful exit, so `procStart` vs the actual process start time is the tiebreak.
     public static func sessions(includeDead: Bool = false) -> [LiveClaudeSession] {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(at: sessionsDir,
@@ -38,9 +45,23 @@ public enum ClaudeLiveCollector {
         var out: [LiveClaudeSession] = []
         for url in files where url.pathExtension == "json" {
             guard let s = parse(url) else { continue }
-            if includeDead || ProcessCollector.isAlive(s.pid) { out.append(s) }
+            if includeDead { out.append(s); continue }
+            guard ProcessCollector.isAlive(s.pid) else { continue }
+            if let recorded = s.procStart.flatMap(ctimeDate),
+               let actual = ProcessCollector.startTime(of: s.pid),
+               abs(actual.timeIntervalSince(recorded)) > 15 { continue }   // recycled pid
+            out.append(s)
         }
         return out
+    }
+
+    /// Parse the CLI's ctime-format procStart ("Wed Jul  1 06:50:48 2026" — single-digit days
+    /// are double-space padded, hence the collapse). Local time, matching what the CLI wrote.
+    static func ctimeDate(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+        return f.date(from: s.replacingOccurrences(of: "  ", with: " "))
     }
 
     static func parse(_ url: URL) -> LiveClaudeSession? {
@@ -60,6 +81,7 @@ public enum ClaudeLiveCollector {
             version: raw["version"] as? String,
             entrypoint: raw["entrypoint"] as? String,
             waitingFor: raw["waitingFor"] as? String,
+            procStart: raw["procStart"] as? String,
             startedAt: msDate(raw["startedAt"]),
             updatedAt: msDate(raw["updatedAt"])
         )

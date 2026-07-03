@@ -42,14 +42,25 @@ public enum ClaudeDesktopCollector {
 
     /// All non-archived Desktop sessions (for standalone display, not just enrichment).
     public static func sessions() -> [DesktopSessionInfo] {
+        allInfos().filter { !$0.isArchived }
+    }
+
+    /// cliSessionIds the user archived in Desktop — used to keep archived conversations out of
+    /// the ended/resumable list and out of search (resurfacing one would undo the archiving).
+    public static func archivedCliIds() -> Set<String> {
+        Set(allInfos().filter(\.isArchived).compactMap(\.cliSessionId))
+    }
+
+    static func allInfos() -> [DesktopSessionInfo] {
         let fm = FileManager.default
         guard let en = fm.enumerator(at: dir,
                 includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey]) else { return [] }
         var out: [DesktopSessionInfo] = []
         for case let url as URL in en where url.lastPathComponent.hasPrefix("local_")
             && url.pathExtension == "json" {
-            if let info = cache.value(path: url.path, stamp: fileStamp(url), compute: { parse(url) }),
-               !info.isArchived { out.append(info) }
+            if let info = cache.value(path: url.path, stamp: fileStamp(url), compute: { parse(url) }) {
+                out.append(info)
+            }
         }
         return out
     }
