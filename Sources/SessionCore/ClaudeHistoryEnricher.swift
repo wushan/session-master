@@ -71,16 +71,17 @@ public enum ClaudeHistoryEnricher {
             var prNumber: Int?, prURL: String?, ctxTokens: Int?
             for d in JSONLReader.tailObjects(url).reversed() {
                 let msg = d["message"] as? [String: Any]
-                // Only accept real model ids; Claude writes "<synthetic>" system turns
-                // (often the very last record) that must not be shown as the model.
-                if model == nil, let m = msg?["model"] as? String, m.hasPrefix("claude-") { model = m }
+                // Only accept real model ids; Claude writes "<synthetic>" system turns (often the
+                // very last record) that must not be shown as the model. Match by exclusion, not
+                // a "claude-" prefix — Bedrock/Vertex ids ("us.anthropic.claude-…") are real too.
+                if model == nil, let m = msg?["model"] as? String, !m.isEmpty, m != "<synthetic>" { model = m }
                 if branch == nil, let b = d["gitBranch"] as? String, b != "HEAD", !b.isEmpty { branch = b }
                 if cwd == nil, let c = d["cwd"] as? String, !c.isEmpty { cwd = c }
-                // Latest *real* assistant turn only: those "<synthetic>" records carry an all-zero
+                // Latest *real* assistant turn only: "<synthetic>" records carry an all-zero
                 // usage dict, and taking it would pin a ~90%-full session at "0% ctx" — exactly
-                // when the warning matters. The same model guard as above skips them.
+                // when the warning matters.
                 if ctxTokens == nil, let u = msg?["usage"] as? [String: Any],
-                   (msg?["model"] as? String)?.hasPrefix("claude-") == true {
+                   (msg?["model"] as? String) != "<synthetic>" {
                     ctxTokens = ((u["input_tokens"] as? Int) ?? 0)
                         + ((u["cache_read_input_tokens"] as? Int) ?? 0)
                         + ((u["cache_creation_input_tokens"] as? Int) ?? 0)

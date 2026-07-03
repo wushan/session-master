@@ -90,10 +90,11 @@ final class SessionStore {
                     Notifier.fire(title: s.displayTitle, body: "Needs your approval",
                                   soundName: "Funk", withSound: settings.soundEnabled)
                 case .awaitingYou:
-                    // Only a genuine turn-completion is news (it was working, or blocked on an
-                    // approval). idle/ended → awaitingYou flips happen when the user themself
-                    // resumes a session or a saved row goes live — notifying those is noise.
-                    if old == .working || old == .needsApproval {
+                    // Only a genuine turn-completion is news (it was working, blocked on an
+                    // approval, or in an unrecognized-but-live status). idle/ended → awaitingYou
+                    // flips happen when the user themself resumes a session or a saved row goes
+                    // live — notifying those is noise.
+                    if old == .working || old == .needsApproval || old == .unknown {
                         Notifier.fire(title: s.displayTitle, body: "Finished — your turn",
                                       soundName: "Glass", withSound: settings.soundEnabled)
                     }
@@ -162,9 +163,16 @@ final class SessionStore {
         }
         // The Desktop store outlives the CLI's transcript retention: a session whose history was
         // cleaned up would open a terminal that just prints "No conversation found" and exits.
+        // For a saved Desktop row, don't dead-end — the conversation may still live inside
+        // Claude.app, so fall back to fronting it (the pre-resume-priority behavior).
         if s.source.isClaude,
            ClaudeHistoryEnricher.transcriptURL(sessionId: s.id, cwd: s.cwd) == nil {
-            lastRecallMessage = "Can’t resume “\(s.displayTitle)” — its history is no longer on disk."
+            if s.source == .claudeDesktop {
+                lastRecallMessage = "No transcript on disk — opened Claude app instead."
+                recall(s)
+            } else {
+                lastRecallMessage = "Can’t resume “\(s.displayTitle)” — its history is no longer on disk."
+            }
             return
         }
         // The folder gone — old behaviour ran `cd` into a missing dir, so the terminal opened and

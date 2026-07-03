@@ -51,6 +51,8 @@ public enum ClaudeDesktopCollector {
         Set(allInfos().filter(\.isArchived).compactMap(\.cliSessionId))
     }
 
+    /// Every Desktop-store entry, INCLUDING archived ones — callers filter by isArchived
+    /// themselves (`sessions()` shows non-archived; `archivedCliIds()` wants only archived).
     static func allInfos() -> [DesktopSessionInfo] {
         let fm = FileManager.default
         guard let en = fm.enumerator(at: dir,

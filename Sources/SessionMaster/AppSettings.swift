@@ -42,6 +42,9 @@ final class AppSettings {
     var dashboardAlwaysOnTop: Bool { didSet { d.set(dashboardAlwaysOnTop, forKey: "alwaysOnTop") } }
     /// Which terminal "Resume" opens in.
     var resumeTerminal: TerminalApp { didSet { d.set(resumeTerminal.rawValue, forKey: "resumeTerminal") } }
+    /// Menu-bar popover: false (default) = triage view (needs-you + working only); true = all
+    /// sessions. Persisted — the popover view is recreated on every open, so @State can't hold it.
+    var popoverShowAll: Bool { didSet { d.set(popoverShowAll, forKey: "popoverShowAll") } }
 
     private let d = UserDefaults.standard
     private init() {
@@ -52,5 +55,6 @@ final class AppSettings {
         notificationsEnabled = d.object(forKey: "notifications") as? Bool ?? true
         dashboardAlwaysOnTop = d.object(forKey: "alwaysOnTop") as? Bool ?? true
         resumeTerminal = TerminalApp(rawValue: d.string(forKey: "resumeTerminal") ?? "") ?? .systemDefault
+        popoverShowAll = d.object(forKey: "popoverShowAll") as? Bool ?? false
     }
 }

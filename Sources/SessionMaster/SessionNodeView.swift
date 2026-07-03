@@ -10,8 +10,16 @@ struct SessionNodeView: View {
     let store: SessionStore
     var isFirst = false
     var isLast = false
+    /// >1 == this row stands for N collapsed routine runs (see MainWindowView.collapseRoutineRuns).
+    var runCount = 0
+    var onToggleRuns: (() -> Void)? = nil
 
     private var isExpanded: Bool { expanded.contains(node.id) }
+
+    /// Most urgent attention among the children — shown through the collapsed fold.
+    private var childAttention: UnifiedSession.Attention? {
+        node.children.map(\.attention).min { $0.rank < $1.rank }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,6 +27,9 @@ struct SessionNodeView: View {
                 chevron
                 SessionRowView(session: node.session,
                                subagentCount: node.children.count,
+                               childAttention: childAttention,
+                               runCount: runCount,
+                               onToggleRuns: onToggleRuns,
                                isFirst: isFirst, isLast: isLast,
                                onRecall: { store.recall(node.session) },
                                onVSCode: { store.openInVSCode(node.session) },
@@ -56,15 +67,23 @@ struct SessionNodeView: View {
         }
     }
 
-    /// A sub-agent / companion: one dim, non-interactive line — just its status, title and source,
-    /// since you can't recall or act on it.
+    /// A sub-agent / companion: one dim, non-interactive line — status word (when it matters),
+    /// title, kind tag, and age, since you can't recall or act on it but you DO want to know
+    /// whether it's still working and how fresh it is.
     private func compactChild(_ s: UnifiedSession) -> some View {
         HStack(spacing: 6) {
-            Circle().fill(s.attention.color.opacity(0.7)).frame(width: 5, height: 5)
+            Circle().fill(s.attention.color.opacity(0.85)).frame(width: 6, height: 6)
+            if s.attention == .working || s.attention.needsUser {
+                Text(s.attention.label.lowercased())
+                    .font(.system(size: 10, weight: .semibold)).foregroundStyle(s.attention.color)
+            }
             Text(s.displayTitle).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
             Text(s.originator == "workflow" ? "workflow" : (s.source.isCodex ? "Codex" : "sub"))
                 .font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
             Spacer(minLength: 0)
+            if let age = relativeAge(s.updatedAt) {
+                Text(age).font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
         }
         .padding(.vertical, 2)
     }

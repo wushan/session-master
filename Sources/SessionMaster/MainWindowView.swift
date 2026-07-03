@@ -17,8 +17,22 @@ enum DashboardTab: String, CaseIterable {
 struct MainWindowView: View {
     @Bindable var store: SessionStore
 
-    enum SourceFilter: String, CaseIterable { case all = "All", claude = "Claude", codex = "Codex" }
+    // "CLI" cuts along the surface axis (my terminals — live, resumed, or ended) rather than the
+    // tool axis: the dozens of saved Desktop conversations are noise when hunting for a terminal.
+    enum SourceFilter: String, CaseIterable { case all = "All", claude = "Claude", codex = "Codex", cli = "CLI" }
     enum SortMode: String, CaseIterable { case project = "Project", recent = "Recent" }
+
+    /// Attention tiers for Recent mode: visible boundaries between "needs me NOW" and "safe to
+    /// ignore". Classification mirrors attention.rank so a row never sorts under the wrong header.
+    private enum Tier: String, CaseIterable {
+        case needsYou = "Needs you", working = "Working", idle = "Idle", saved = "Saved & ended"
+    }
+    private func tier(_ s: UnifiedSession) -> Tier {
+        if s.attention.needsUser { return .needsYou }
+        if s.attention == .working { return .working }
+        if s.attention == .ended || (s.source == .claudeDesktop && s.pid == nil) { return .saved }
+        return .idle
+    }
 
     @State private var sourceFilter: SourceFilter = .all
     @State private var sortMode: SortMode = .recent
@@ -28,6 +42,11 @@ struct MainWindowView: View {
     @State private var olderResults: [UnifiedSession] = []
     @State private var expandedNodes: Set<String> = []
     @State private var expandedProjects: Set<String> = []
+    // The "Saved & ended" shelf (Recent mode) starts folded — dozens of saved Desktop
+    // conversations must not bury the handful of live rows. Search always sees through it.
+    @State private var savedShelfExpanded = false
+    // Routine-run groups (scheduledTaskId) the user has expanded back into individual rows.
+    @State private var expandedRoutines: Set<String> = []
     @State private var settings = AppSettings.shared
     @State private var window: NSWindow?
     @State private var didSetInitialSize = false
@@ -246,6 +265,7 @@ struct MainWindowView: View {
         case .all: break
         case .claude: if !s.source.isClaude { return false }
         case .codex: if !s.source.isCodex { return false }
+        case .cli: if s.source != .claudeCLI && s.source != .codexCLI { return false }
         }
         guard !search.isEmpty else { return true }
         // subtitle (last prompt / AI title) included: searchOlder finds out-of-window sessions BY
@@ -285,6 +305,41 @@ struct MainWindowView: View {
         }
     }
 
+    /// A row plus its collapsed-run metadata: runCount > 1 marks the representative of a
+    /// routine-run group; key toggles that group's expansion.
+    private struct RowItem: Identifiable {
+        let node: SessionNode
+        var runCount = 0
+        var key: String?
+        var id: String { node.id }
+    }
+
+    /// Collapse repeated routine runs (same scheduledTaskId, e.g. a daily routine ×13) into
+    /// their most urgent/recent row with an "×N runs" chip. Expanded groups pass through whole;
+    /// searching disables collapsing so filter results stay complete.
+    private func collapseRoutineRuns(_ nodes: [SessionNode]) -> [RowItem] {
+        guard search.isEmpty else { return nodes.map { RowItem(node: $0) } }
+        func groupKey(_ s: UnifiedSession) -> String? {
+            guard s.isRoutineRun, let t = s.scheduledTaskId else { return nil }
+            return t + "\u{1}" + s.projectRoot
+        }
+        var counts: [String: Int] = [:]
+        for n in nodes { if let k = groupKey(n.session) { counts[k, default: 0] += 1 } }
+        var seen = Set<String>()
+        var out: [RowItem] = []
+        for n in nodes {
+            guard let k = groupKey(n.session), counts[k, default: 0] > 1 else {
+                out.append(RowItem(node: n)); continue
+            }
+            if seen.insert(k).inserted {
+                out.append(RowItem(node: n, runCount: counts[k]!, key: k))  // representative
+            } else if expandedRoutines.contains(k) {
+                out.append(RowItem(node: n))                                // expanded sibling
+            }
+        }
+        return out
+    }
+
     @ViewBuilder private var sessionsList: some View {
         if !store.hasLoaded {
             loadingState
@@ -293,15 +348,22 @@ struct MainWindowView: View {
         } else if sortMode == .recent {
             // Plain scroll with zero inter-row spacing so each row's timeline rail joins the next
             // into one continuous vertical line (a List inserts gaps that break the rail).
+            // Rows render in attention-tier sections so the boundary between "needs me NOW" and
+            // "safe to ignore" is a visible line, not a dot-color gradient across 30 rows.
             ScrollView {
-                // Leading alignment + full-width rows so a row wider than the (narrow) window
-                // truncates on the right instead of centering and clipping both edges.
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(recentNodes.enumerated()), id: \.element.id) { idx, node in
-                        SessionNodeView(node: node, expanded: $expandedNodes, store: store,
-                                        isFirst: idx == 0, isLast: idx == recentNodes.count - 1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 6)
+                    let items = collapseRoutineRuns(recentNodes)
+                    let byTier = Dictionary(grouping: items, by: { tier($0.node.session) })
+                    ForEach(Tier.allCases, id: \.self) { t in
+                        if let rows = byTier[t], !rows.isEmpty {
+                            if t == .saved && search.isEmpty {
+                                savedShelfHeader(count: rows.count)
+                                if savedShelfExpanded { tierRows(rows) }
+                            } else {
+                                tierHeader(t.rawValue, count: rows.count)
+                                tierRows(rows)
+                            }
+                        }
                     }
                 }.padding(.vertical, 6).frame(maxWidth: .infinity)
             }
@@ -358,6 +420,51 @@ struct MainWindowView: View {
                 }
             }.listStyle(.inset)
         }
+    }
+
+    /// One tier's rows. Leading alignment + full-width rows so a row wider than the (narrow)
+    /// window truncates on the right instead of centering and clipping both edges. isFirst/isLast
+    /// trim the timeline rail per section, giving each tier its own clean rail run.
+    @ViewBuilder private func tierRows(_ rows: [RowItem]) -> some View {
+        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, item in
+            SessionNodeView(node: item.node, expanded: $expandedNodes, store: store,
+                            isFirst: idx == 0, isLast: idx == rows.count - 1,
+                            runCount: item.runCount,
+                            onToggleRuns: item.key.map { k in { toggleRoutineGroup(k) } })
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 6)
+        }
+    }
+
+    private func toggleRoutineGroup(_ key: String) {
+        if expandedRoutines.contains(key) { expandedRoutines.remove(key) }
+        else { expandedRoutines.insert(key) }
+    }
+
+    private func tierHeader(_ title: String, count: Int) -> some View {
+        HStack(spacing: 5) {
+            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text("\(count)").font(.system(size: 10)).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 3)
+    }
+
+    /// The folded shelf for saved Desktop conversations + ended sessions — one line instead of
+    /// dozens of rows. Styled like the Project mode "Show N more…" affordance.
+    private func savedShelfHeader(count: Int) -> some View {
+        Button { savedShelfExpanded.toggle() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: savedShelfExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                Text("Saved & ended".uppercased()).font(.system(size: 10, weight: .semibold))
+                Text("\(count)").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.secondary).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).pointerCursor()
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 3)
+        .help(savedShelfExpanded ? "Hide saved Desktop conversations and ended sessions"
+              : "Show \(count) saved/ended sessions")
     }
 
     private func emptyState(_ text: String) -> some View {

@@ -47,21 +47,36 @@ public enum ClaudeLiveCollector {
             guard let s = parse(url) else { continue }
             if includeDead { out.append(s); continue }
             guard ProcessCollector.isAlive(s.pid) else { continue }
-            if let recorded = s.procStart.flatMap(ctimeDate),
-               let actual = ProcessCollector.startTime(of: s.pid),
-               abs(actual.timeIntervalSince(recorded)) > 15 { continue }   // recycled pid
+            if let actual = ProcessCollector.startTime(of: s.pid),
+               let ps = s.procStart, !procStartMatches(ps, actual: actual) { continue }  // recycled pid
             out.append(s)
         }
         return out
     }
 
-    /// Parse the CLI's ctime-format procStart ("Wed Jul  1 06:50:48 2026" — single-digit days
-    /// are double-space padded, hence the collapse). Local time, matching what the CLI wrote.
-    static func ctimeDate(_ s: String) -> Date? {
+    /// Whether the file's ctime-format procStart names (about) the same instant the process
+    /// actually started. The CLI writes the string in **UTC** ("Wed Jul  1 06:50:48 2026" ==
+    /// 14:50:48 CST — verified against ps lstart on a live process), but be liberal: accept a
+    /// match under EITHER a UTC or a local-time reading, so a CLI that switches conventions can
+    /// never make every real session fail the check and get dropped. Unparseable → treat as
+    /// matching (fall back to plain pid-aliveness rather than killing live sessions).
+    static func procStartMatches(_ s: String, actual: Date, tolerance: TimeInterval = 15) -> Bool {
+        let cleaned = s.replacingOccurrences(of: "  ", with: " ")
+        for tz in [TimeZone(identifier: "UTC"), TimeZone.current] {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = tz
+            f.dateFormat = "EEE MMM d HH:mm:ss yyyy"
+            if let d = f.date(from: cleaned), abs(actual.timeIntervalSince(d)) <= tolerance {
+                return true
+            }
+        }
+        // Parsed under both conventions and neither matched → genuinely a different process.
+        // If it parsed under neither, be safe and keep the session.
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "EEE MMM d HH:mm:ss yyyy"
-        return f.date(from: s.replacingOccurrences(of: "  ", with: " "))
+        return f.date(from: cleaned) == nil
     }
 
     static func parse(_ url: URL) -> LiveClaudeSession? {

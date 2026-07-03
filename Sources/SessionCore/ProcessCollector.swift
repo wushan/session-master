@@ -248,6 +248,27 @@ public enum ProcessCollector {
                                            "proto", "apply", "login", "logout", "sandbox",
                                            "completion", "debug", "cloud"]
 
+    /// Global codex flags that take a separate value argument — their value must not be mistaken
+    /// for the subcommand (`codex --profile work exec …` is an exec run, not a "work" TUI).
+    static let codexValueFlags: Set<String> = ["-m", "--model", "-p", "--profile", "-c", "--config",
+                                               "-C", "--cd", "-s", "--sandbox", "-a", "--ask-for-approval",
+                                               "-i", "--image", "--color", "--oss"]
+
+    /// The first argv token that is actually a subcommand: skips flags AND the value of
+    /// known value-taking flags. nil == plain `codex` TUI.
+    static func codexSubcommand(_ argv: [String]) -> String? {
+        var i = 1
+        while i < argv.count {
+            let a = argv[i]
+            if a.hasPrefix("-") {
+                if codexValueFlags.contains(a) { i += 2 } else { i += 1 }   // --flag=v self-contains
+                continue
+            }
+            return a
+        }
+        return nil
+    }
+
     /// Find live interactive codex TUI processes (`codex`, `codex resume …`). Matched back to
     /// rollouts by explicit resume id or by cwd, giving Codex sessions real liveness + a terminal
     /// to recall — and preventing "Resume" from attaching a second TUI to a running thread.
@@ -256,8 +277,7 @@ public enum ProcessCollector {
         for rec in snapshot() where rec.comm == "codex" {
             guard let argv = args(of: rec.pid), let exe = argv.first,
                   exe.split(separator: "/").last?.lowercased() == "codex" else { continue }
-            // First non-flag arg = subcommand (nil for a plain `codex` TUI).
-            let sub = argv.dropFirst().first(where: { !$0.hasPrefix("-") })
+            let sub = codexSubcommand(argv)
             if let sub, codexNonTUI.contains(sub) { continue }
             var resumeId: String?
             if sub == "resume", let i = argv.firstIndex(of: "resume"), i + 1 < argv.count,
