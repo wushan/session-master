@@ -42,15 +42,24 @@ puts it in one place, with one-click recall.
 
 - **Unified, real-time list** of Claude Code (CLI + Desktop) and Codex (CLI + Desktop + VS
   Code) sessions — both *live* and your *saved* Desktop conversations, grouped by project
-  (recent first, the rest one click away).
+  (recent first, the rest one click away). The source badge's glyph tells the surface apart at
+  a glance: a **filled terminal** (live terminal attached), an outline terminal (closed CLI
+  session), or a **macwindow** (Desktop app conversation); an **app→cli** chip marks a Desktop
+  conversation that a terminal has taken over. Codex terminal sessions are matched to their
+  actual `codex` process, so an open TUI is recallable even after hours idle, and closed
+  threads show as resumable for a full day.
 - **Status that tells you what each session needs** — your turn, needs approval, working, idle
   — with **sound + Notification Center alerts** when a session finishes its turn or hits a
   permission prompt.
 - **Rich at-a-glance status on each row**: git branch state (merged / ↑unpushed / ↓behind /
   local), uncommitted change count, **clickable PR badge** (open / draft / merged), context-
   window %, and the session's last prompt.
-- **Timeline list** — last-activity time on a left axis; a **halo ring** marks sessions that are
-  actively working, and sessions idle >48h fade to grayscale so the live ones stand out.
+- **Timeline list in attention tiers** — *Needs you / Working / Idle* sections with a collapsed
+  **Saved & ended shelf**, so dozens of saved conversations never bury the rows that matter.
+  Last-activity time sits on a left axis; a **halo ring** marks sessions that are actively
+  working; rows that need you carry a **colored edge bar**; sessions idle >48h fade to grayscale
+  (unless they still need you). Repeated routine runs collapse into one row with an **×N runs**
+  chip.
 - **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list —
   search also reaches back to find (and resume) a session you closed days ago.
 - **Parent → child hierarchy**: a Claude session nests the things it spawned — Codex companions,
@@ -70,7 +79,9 @@ puts it in one place, with one-click recall.
 - **Open in your editor / Reveal in Finder** — pointed at the session's *real worktree*, not
   the repo root. Editor is configurable (VS Code / Cursor / Zed / Sublime / Xcode / custom).
 - **Routines & Automations** tab: Claude scheduled tasks + Codex automations, with next run.
-- **Dashboard** with Project / Recent sort, source filter, and search; **Config** and **About**
+- **Dashboard** with Project / Recent sort, source filter (All / Claude / Codex / **CLI** — the
+  last one mutes the Desktop archive), and search; the **menu-bar popover triages by default**
+  (needs-you + working only, "Show all" one click away); **Config** and **About**
   (version + one-click *Update via Homebrew*) tabs. Open it and a Dock icon appears so you can
   minimize it like any window; close it and the app drops back to menu-bar only. It **stays
   always on top** by default so the session list is visible behind your work — toggle that off in
@@ -89,7 +100,7 @@ puts it in one place, with one-click recall.
 | 🔴 red | needs your **approval** (a permission prompt is waiting) |
 | 🟡 yellow | **your turn** — the assistant finished and is waiting for your input |
 | 🟢 green | **working** |
-| ⚪ gray | idle / shell / background |
+| ⚪ gray | idle / background |
 
 A session whose terminal has closed shows a blue **resume** chip instead of a live dot — click it (or the row) to reopen the session in a terminal. The menu-bar icon shows the count of sessions that need you.
 
