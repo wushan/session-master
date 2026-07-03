@@ -89,12 +89,12 @@ struct SessionRowView: View {
                         if runCount > 1 { runCountChip }
                         if subagentCount > 0 { subagentChip }
                         prChip
-                        // Actions live IN the line (after a spacer), not overlaid on it — an
-                        // overlay would sit exactly on top of the chips and steal their clicks.
-                        if hovering, !editing {
-                            Spacer(minLength: 6)
-                            actions
-                        }
+                        Spacer(minLength: 4)
+                        // One ellipsis menu, ALWAYS occupying its (small, fixed) slot and only
+                        // fading in on hover: inserting views on hover reflowed the whole line
+                        // (title truncated, chips squeezed into vertical letter-stacks), and the
+                        // old overlay covered the chips — reserved space + opacity does neither.
+                        actionsMenu.opacity(hovering && !editing ? 1 : 0)
                     }
                 }
                 metaLine
@@ -227,6 +227,7 @@ struct SessionRowView: View {
         .background(session.source.isCodex ? Color.purple.opacity(0.22) : Color.orange.opacity(0.22))
         .foregroundStyle(session.source.isCodex ? .purple : .orange)
         .clipShape(Capsule())
+        .fixedSize()   // a badge must never compress into a vertical letter-stack
         .help(session.source.rawValue + (surfaceGlyph == "terminal.fill" ? " — terminal attached" : ""))
     }
 
@@ -234,6 +235,7 @@ struct SessionRowView: View {
         Text(text).font(.system(size: 10, weight: .semibold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(color.opacity(0.18)).foregroundStyle(color).clipShape(Capsule())
+            .fixedSize()   // chips keep their natural size; the (truncating) title flexes instead
     }
 
     @ViewBuilder private var gitChips: some View {
@@ -276,6 +278,7 @@ struct SessionRowView: View {
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(color.opacity(0.18)).foregroundStyle(color)
         .clipShape(Capsule())
+        .fixedSize()
     }
 
     /// How many Codex companions / sub-agents this session spawned (children collapse by default,
@@ -295,6 +298,7 @@ struct SessionRowView: View {
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(tint.opacity(0.18)).foregroundStyle(tint)
         .clipShape(Capsule())
+        .fixedSize()
         .help(childAttention == .working ? "A sub-agent is working — expand to see"
               : "Sub-agents / companions")
     }
@@ -317,6 +321,7 @@ struct SessionRowView: View {
         .padding(.horizontal, 5).padding(.vertical, 1)
         .background(Color.blue.opacity(0.2)).foregroundStyle(.blue)
         .clipShape(Capsule())
+        .fixedSize()
     }
 
     private var metaLine: some View {
@@ -346,26 +351,30 @@ struct SessionRowView: View {
         return prettyPath(session.cwd)
     }
 
-    // Recall is the whole-row click, so the row only needs the secondary actions here.
-    private var actions: some View {
-        HStack(spacing: 2) {
+    // Recall/resume is the whole-row click; every secondary action lives in this one compact
+    // menu (mirrors the context menu). A single 22pt slot is cheap enough to reserve permanently,
+    // which is what keeps the row from reflowing on hover.
+    private var actionsMenu: some View {
+        Menu {
             if onRename != nil {
-                IconButton(systemName: "pencil", help: "Rename") {
-                    draft = session.displayTitle; editing = true
-                }
+                Button("Rename…") { draft = session.displayTitle; editing = true }
             }
+            if session.canRecall { Button("Recall window") { onRecall() } }
             if session.canResume, let onResume {
-                IconButton(systemName: "arrow.clockwise", help: "Resume in Terminal", action: onResume)
+                Button("Resume in \(AppSettings.shared.resumeTerminal.rawValue)") { onResume() }
             }
-            IconButton(systemName: "chevron.left.forwardslash.chevron.right",
-                       help: "Open worktree in editor", action: onVSCode)
-            if let onReveal {
-                IconButton(systemName: "folder", help: "Reveal worktree in Finder", action: onReveal)
-            }
+            Button("Open in editor") { onVSCode() }
+            if let onReveal { Button("Reveal in Finder") { onReveal() } }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 13))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
         }
-        .padding(.horizontal, 3).padding(.vertical, 1)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.92),
-                    in: RoundedRectangle(cornerRadius: 7))
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .foregroundStyle(.secondary)
+        .help("Actions")
+        .pointerCursor()
     }
 
     private func prettyPath(_ p: String) -> String {

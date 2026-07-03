@@ -2,6 +2,17 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.4.1] — 2026-07-04
+
+### Fixed
+- **Hovering a row no longer reflows it.** 0.4.0 inserted the action buttons into the title line
+  on hover, which squeezed the title to a few characters and crushed the chips into vertical
+  letter-stacks — and the pre-0.4.0 overlay had covered the chips instead. The actions are now a
+  single ellipsis menu (rename / recall / resume / editor / Finder) whose small slot is always
+  reserved and only fades in on hover: nothing moves, nothing is covered.
+- **Chips can never compress into vertical text** — every capsule badge is now fixed-size; the
+  title is the one element that flexes (truncates) when a row runs out of width.
+
 ## [0.4.0] — 2026-07-04
 
 A deep-audit release: a multi-agent review swept every subsystem (resume, Desktop↔terminal
