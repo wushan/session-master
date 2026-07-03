@@ -8,6 +8,7 @@ struct MenuContentView: View {
     @State private var expanded: Set<String> = []
     @State private var search = ""
     @State private var popoverWindow: NSWindow?
+    @State private var settings = AppSettings.shared
 
     /// Open the dashboard to a tab and dismiss the menu-bar popover (it doesn't auto-close when
     /// we bring our own window forward).
@@ -17,19 +18,23 @@ struct MenuContentView: View {
         openDashboard(openWindow)
     }
 
-    /// Show every session so you can pick any one back up — sorted so the ones needing you
-    /// (and then the most recently active) are at the top.
+    /// The popover is the "who needs me NOW" surface: by default it triages (needs-you + working
+    /// only) instead of duplicating the dashboard's 20-50-row haystack. "Show all" persists as a
+    /// preference; typing in search always looks through the full set.
     private var popoverSessions: [UnifiedSession] {
         let sorted = store.sessions.sorted {
             $0.attention.rank != $1.attention.rank
                 ? $0.attention.rank < $1.attention.rank
                 : ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
         }
-        guard !search.isEmpty else { return sorted }
-        return sorted.filter { s in
-            [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
-                .compactMap { $0 }.joined(separator: " ").localizedCaseInsensitiveContains(search)
+        if !search.isEmpty {
+            return sorted.filter { s in
+                [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
+                    .compactMap { $0 }.joined(separator: " ").localizedCaseInsensitiveContains(search)
+            }
         }
+        guard !settings.popoverShowAll else { return sorted }
+        return sorted.filter { $0.attention.needsUser || $0.attention == .working }
     }
 
     var body: some View {
@@ -42,19 +47,41 @@ struct MenuContentView: View {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading sessions…").foregroundStyle(.secondary) }
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 28)
             } else if sessions.isEmpty {
-                Text(search.isEmpty ? "No active sessions" : "No matches").foregroundStyle(.secondary)
+                // Triage view empty ≠ no sessions: say the quiet part and offer the way out.
+                let quiet = search.isEmpty && !settings.popoverShowAll && !store.sessions.isEmpty
+                Text(quiet ? "All quiet — nothing needs you"
+                     : (search.isEmpty ? "No active sessions" : "No matches"))
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 24)
             } else {
+                // Height must be sized to the TREE rows actually rendered — the flat session
+                // count includes claimed companions (collapsed children), which would reserve
+                // ~84pt of permanent blank space each.
+                let nodes = SessionTree.build(sessions, extraChildren: store.subagentChildren)
                 ScrollView {
                     VStack(spacing: 4) {
-                        ForEach(SessionTree.build(sessions, extraChildren: store.subagentChildren)) { node in
+                        ForEach(nodes) { node in
                             SessionNodeView(node: node, expanded: $expanded, store: store)
                         }
                     }.padding(8)
                 }
                 // ScrollView has no intrinsic height inside a self-sizing menu-bar
                 // window, so it collapses to 0. Give it a concrete, content-aware height.
-                .frame(height: min(CGFloat(sessions.count) * 84 + 16, 520))
+                .frame(height: min(CGFloat(nodes.count) * 84 + 16, 520))
+            }
+            if search.isEmpty, !store.sessions.isEmpty {
+                Button {
+                    settings.popoverShowAll.toggle()
+                } label: {
+                    Text(settings.popoverShowAll
+                         ? "Show only sessions that need me"
+                         : "Show all \(store.sessions.count) sessions")
+                        .font(.caption).foregroundStyle(.tint)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).pointerCursor()
+                .padding(.vertical, 5)
             }
             if !store.jobs.isEmpty {
                 Divider()
@@ -103,7 +130,11 @@ struct MenuContentView: View {
                 Label("\(store.awaitingYouCount)", systemImage: "person.fill.questionmark")
                     .font(.caption).foregroundStyle(.yellow).help("Your turn")
             }
-            Text("\(popoverSessions.count)").font(.caption).foregroundStyle(.secondary)
+            Text(search.isEmpty && !settings.popoverShowAll && popoverSessions.count < store.sessions.count
+                 ? "\(popoverSessions.count) / \(store.sessions.count)"
+                 : "\(popoverSessions.count)")
+                .font(.caption).foregroundStyle(.secondary)
+                .help("Sessions shown / total")
         }.padding(.horizontal, 12).padding(.vertical, 8)
     }
 

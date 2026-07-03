@@ -24,15 +24,20 @@ public struct GitStatus: Sendable {
 public enum GitStatusCollector {
     static let cache = FileCache<GitStatus>()
     static let lock = NSLock()
-    nonisolated(unsafe) static var gitdirs: [String: String] = [:]
+    nonisolated(unsafe) static var gitdirs: [String: (dir: String?, at: Date)] = [:]
 
     static func gitdir(_ dir: String) -> String? {
         lock.lock(); let cached = gitdirs[dir]; lock.unlock()
-        if let cached { return cached }
-        guard let g = Shell.run("/usr/bin/git", ["-C", dir, "rev-parse", "--absolute-git-dir"]),
-              !g.isEmpty else { return nil }
-        lock.lock(); gitdirs[dir] = g; lock.unlock()
-        return g
+        if let cached {
+            // Failures are cached too — sessions in deleted worktrees / non-git folders would
+            // otherwise spawn a `git rev-parse` subprocess on every 2s poll, forever. Negatives
+            // are re-probed occasionally so a later `git init`/restore is still picked up.
+            if cached.dir != nil || Date().timeIntervalSince(cached.at) < 90 { return cached.dir }
+        }
+        let g = Shell.run("/usr/bin/git", ["-C", dir, "rev-parse", "--absolute-git-dir"])
+        let value = (g?.isEmpty == false) ? g : nil
+        lock.lock(); gitdirs[dir] = (value, Date()); lock.unlock()
+        return value
     }
 
     public static func status(dir: String) -> GitStatus? {

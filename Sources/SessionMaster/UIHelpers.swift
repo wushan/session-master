@@ -61,6 +61,18 @@ extension View {
     func pointerCursor(_ active: Bool = true) -> some View { modifier(PointerCursor(active: active)) }
 }
 
+/// Last-activity age, e.g. "2m" / "3h" — the freshness signal for active vs stale rows and
+/// child lines. nil for unknown/future dates (a clock skew must not render as garbage).
+func relativeAge(_ d: Date?) -> String? {
+    guard let d else { return nil }
+    let s = -d.timeIntervalSinceNow
+    if s < 0 { return nil }
+    if s < 60 { return "now" }
+    if s < 3600 { return "\(Int(s / 60))m" }
+    if s < 86_400 { return "\(Int(s / 3600))h" }
+    return "\(Int(s / 86_400))d"
+}
+
 /// Compact icon button with a hover highlight + pointer cursor, used for row actions.
 struct IconButton: View {
     let systemName: String

@@ -6,6 +6,12 @@ struct SessionRowView: View {
     let session: UnifiedSession
     var isChild = false
     var subagentCount = 0
+    /// Most urgent attention among (collapsed) children — tints the sub-agent chip so a working
+    /// or blocked child shows through the fold.
+    var childAttention: UnifiedSession.Attention? = nil
+    /// >1 == this row stands for N collapsed routine runs; renders an "×N runs" toggle chip.
+    var runCount = 0
+    var onToggleRuns: (() -> Void)? = nil
     // Position in a continuous-rail list: trims the rail so it starts at the first dot and ends at
     // the last (no overhang above the top dot / no tail below the bottom one). Default false =
     // full-height rail (used where rows don't form one continuous timeline).
@@ -23,6 +29,31 @@ struct SessionRowView: View {
     @FocusState private var titleFocused: Bool
 
     private var rowVPad: CGFloat { isChild ? 5 : 7 }
+
+    /// Stale fade, except for rows that still need the user (see the modifiers below).
+    private var faded: Bool { session.isStale && !session.attention.needsUser }
+
+    /// What a click on this row will actually do — the tap handler, the tooltip, and the blue
+    /// resume chip all read this one truth so the user can predict the click before making it.
+    enum PrimaryAction { case recall, resume, none }
+    private var primaryAction: PrimaryAction {
+        // A saved Desktop row's "recall" can only foreground Claude.app without navigating to
+        // this conversation — resume-in-terminal is the only action that provably lands in the
+        // clicked session, so it takes the primary click (recall stays in the context menu).
+        if session.source == .claudeDesktop, session.pid == nil, session.canResume { return .resume }
+        if session.canRecall { return .recall }
+        if session.canResume { return .resume }
+        return .none
+    }
+
+    private var primaryActionHint: String {
+        switch primaryAction {
+        case .recall: return "Click to recall"
+        case .resume:
+            return "Click to resume in \(AppSettings.shared.resumeTerminal.rawValue) — opens a new terminal"
+        case .none:   return ""
+        }
+    }
 
     var body: some View {
         // The whole row recalls; action buttons overlay the top-right on hover so the content
@@ -45,11 +76,25 @@ struct SessionRowView: View {
                             Image(systemName: "pencil").font(.system(size: 9)).foregroundStyle(.tertiary)
                         }
                         sourceBadge
-                        if session.isEnded { resumeChip }
+                        if session.fromDesktop {
+                            chip("app→cli", .orange)
+                                .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
+                        }
+                        // The chip appears whenever the primary click RESUMES (not only on ended
+                        // rows) — a saved Desktop row launches a terminal on click, and that
+                        // side effect must be visible before the click, not after.
+                        if primaryAction == .resume { resumeChip }
                         if session.isAutomationRun { scheduleBadge("auto", .secondary) }
                         else if session.isRoutineRun { scheduleBadge("routine", .teal) }
+                        if runCount > 1 { runCountChip }
                         if subagentCount > 0 { subagentChip }
                         prChip
+                        // Actions live IN the line (after a spacer), not overlaid on it — an
+                        // overlay would sit exactly on top of the chips and steal their clicks.
+                        if hovering, !editing {
+                            Spacer(minLength: 6)
+                            actions
+                        }
                     }
                 }
                 metaLine
@@ -70,20 +115,40 @@ struct SessionRowView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if session.canRecall { onRecall() }
-            else if session.canResume { onResume?() }
+            switch primaryAction {
+            case .recall: onRecall()
+            case .resume: onResume?()
+            case .none:   break
+            }
         }
-        .pointerCursor(session.canRecall || session.canResume)
+        .pointerCursor(primaryAction != .none)
         .padding(.horizontal, 8)
         // Rounded hover fill as a background (not a clip) so the timeline rail isn't cut at the
-        // row edges — it runs straight into the next row.
-        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.06) : .clear))
-        .overlay(alignment: .topTrailing) { if hovering { actions.padding(.top, 6).padding(.trailing, 8) } }
+        // row edges — it runs straight into the next row. Beneath it, rows that need the user get
+        // a row-level urgency treatment that survives peripheral vision (the 9pt dot alone loses
+        // to brighter chips): needsApproval = red edge bar + faint tint; awaitingYou = yellow bar.
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(!isChild && session.attention == .needsApproval
+                          ? Color.red.opacity(0.06) : .clear)
+                RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.06) : .clear)
+            }
+        }
+        .overlay(alignment: .leading) {
+            if !isChild, session.attention.needsUser {
+                Capsule().fill(session.attention.color)
+                    .frame(width: 3)
+                    .padding(.vertical, 4)
+            }
+        }
         // Old sessions (>48h idle) fade to grayscale so the live ones stand out — still clickable.
-        .saturation(session.isStale && !editing ? 0 : 1)
-        .opacity(session.isStale && !hovering && !editing ? 0.5 : 1)
+        // Rows that NEED the user are exempt: fading a red "needs approval" dot to gray would hide
+        // the very signal the sort and the menu-bar badge are advertising.
+        .saturation(faded && !editing ? 0 : 1)
+        .opacity(faded && !hovering && !editing ? 0.5 : 1)
         .onHover { hovering = $0 }
-        .help(session.canRecall ? "Click to recall" : (session.canResume ? "Click to resume in Terminal" : ""))
+        .help(primaryActionHint)
         .contextMenu {
             Button("Rename…") { draft = session.displayTitle; editing = true }
             if session.rich.customTitle != nil {
@@ -138,13 +203,31 @@ struct SessionRowView: View {
         }
     }
 
+    /// The surface glyph: where does this session actually live? A filled terminal = a live
+    /// terminal window you can recall; an outline terminal = a CLI session whose terminal is
+    /// gone; a macwindow = a Desktop-app conversation. The user has typed into the wrong surface
+    /// before — tool color alone (Claude/Codex) doesn't answer "which window owns this?".
+    private var surfaceGlyph: String {
+        switch session.source {
+        case .claudeDesktop, .codexDesktop:
+            return "macwindow"
+        case .claudeCLI, .codexCLI:
+            let attached = session.terminal.terminalPID != nil || session.terminal.viaTmux
+            return attached ? "terminal.fill" : "terminal"
+        }
+    }
+
     private var sourceBadge: some View {
-        Text(session.source.isCodex ? "Codex" : "Claude")
-            .font(.system(size: 10, weight: .bold))
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(session.source.isCodex ? Color.purple.opacity(0.22) : Color.orange.opacity(0.22))
-            .foregroundStyle(session.source.isCodex ? .purple : .orange)
-            .clipShape(Capsule())
+        HStack(spacing: 3) {
+            Image(systemName: surfaceGlyph).font(.system(size: 8, weight: .bold))
+            Text(session.source.isCodex ? "Codex" : "Claude")
+                .font(.system(size: 10, weight: .bold))
+        }
+        .padding(.horizontal, 5).padding(.vertical, 1)
+        .background(session.source.isCodex ? Color.purple.opacity(0.22) : Color.orange.opacity(0.22))
+        .foregroundStyle(session.source.isCodex ? .purple : .orange)
+        .clipShape(Capsule())
+        .help(session.source.rawValue + (surfaceGlyph == "terminal.fill" ? " — terminal attached" : ""))
     }
 
     private func chip(_ text: String, _ color: Color) -> some View {
@@ -196,15 +279,33 @@ struct SessionRowView: View {
     }
 
     /// How many Codex companions / sub-agents this session spawned (children collapse by default,
-    /// so this is the at-a-glance count).
+    /// so this is the at-a-glance count). Tinted by the busiest child's attention so a working or
+    /// blocked child shows through the fold instead of hiding behind a gray count.
     private var subagentChip: some View {
-        HStack(spacing: 2) {
+        let tint: Color = {
+            switch childAttention {
+            case .needsApproval, .awaitingYou, .working: return childAttention!.color
+            default: return .secondary
+            }
+        }()
+        return HStack(spacing: 2) {
             Image(systemName: "person.2.fill").font(.system(size: 9))
             Text("\(subagentCount)").font(.system(size: 10, weight: .bold))
         }
         .padding(.horizontal, 5).padding(.vertical, 1)
-        .background(Color.secondary.opacity(0.18)).foregroundStyle(.secondary)
+        .background(tint.opacity(0.18)).foregroundStyle(tint)
         .clipShape(Capsule())
+        .help(childAttention == .working ? "A sub-agent is working — expand to see"
+              : "Sub-agents / companions")
+    }
+
+    /// "×N runs" — this row stands for N collapsed routine runs; click to expand them.
+    private var runCountChip: some View {
+        Button { onToggleRuns?() } label: {
+            chip("×\(runCount) runs", .teal)
+        }
+        .buttonStyle(.plain).pointerCursor()
+        .help("\(runCount) runs of this routine — click to show them all")
     }
 
     /// Marks an ended session — the terminal is gone, but click to resume it in a new Terminal.
@@ -228,16 +329,8 @@ struct SessionRowView: View {
         }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
     }
 
-    /// Last-activity age, e.g. "2m" / "3h" — the freshness signal for active vs stale.
-    private var relativeAge: String? {
-        guard let d = session.updatedAt else { return nil }
-        let s = -d.timeIntervalSinceNow
-        if s < 0 { return nil }
-        if s < 60 { return "now" }
-        if s < 3600 { return "\(Int(s / 60))m" }
-        if s < 86_400 { return "\(Int(s / 3600))h" }
-        return "\(Int(s / 86_400))d"
-    }
+    /// Last-activity age (shared helper in UIHelpers so child lines render the same format).
+    private var relativeAge: String? { SessionMaster.relativeAge(session.updatedAt) }
 
     private var originatorText: String {
         switch session.originator {

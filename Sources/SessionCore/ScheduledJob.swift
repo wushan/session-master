@@ -25,12 +25,31 @@ public enum CodexAutomationCollector {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex/automations")
     }
 
+    private static let lock = NSLock()
+    // RRule.nextRun is a bounded per-minute forward scan (thousands of Calendar calls for a
+    // weekly rule) — far too heavy to recompute per automation on every 2s poll. Cache each job
+    // on its toml stamp and recompute only when the file changes or the cached nextRun passes.
+    nonisolated(unsafe) private static var jobCache: [String: (stamp: Double, job: ScheduledJob)] = [:]
+
     public static func jobs() -> [ScheduledJob] {
         let fm = FileManager.default
         guard let subdirs = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
         else { return [] }
         return subdirs.compactMap { sub in
             let toml = sub.appendingPathComponent("automation.toml")
+            let stamp = fileStamp(toml)
+            lock.lock(); let cached = jobCache[sub.path]; lock.unlock()
+            if let cached, cached.stamp == stamp,
+               cached.job.nextRun.map({ $0 > Date() }) ?? true {
+                return cached.job
+            }
+            guard let job = parseJob(toml: toml, sub: sub) else { return nil }
+            lock.lock(); jobCache[sub.path] = (stamp, job); lock.unlock()
+            return job
+        }
+    }
+
+    private static func parseJob(toml: URL, sub: URL) -> ScheduledJob? {
             guard let text = try? String(contentsOf: toml, encoding: .utf8) else { return nil }
             let t = TOMLLite.parse(text)
             let status = t["status"] as? String
@@ -49,7 +68,6 @@ public enum CodexAutomationCollector {
                 summary: (t["prompt"] as? String).map { String($0.prefix(140)) },
                 updatedAt: (t["updated_at"] as? Int).map { Date(timeIntervalSince1970: Double($0) / 1000) }
             )
-        }
     }
 }
 

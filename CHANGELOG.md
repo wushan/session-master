@@ -2,6 +2,83 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.4.0] — 2026-07-04
+
+A deep-audit release: a multi-agent review swept every subsystem (resume, Desktop↔terminal
+duality, parent/child nesting, status mapping, parsing, performance), 42 adversarially-verified
+defects were fixed, a second review pass caught and fixed 10 regressions in those fixes, and a
+judged panel of UI/UX proposals landed the winners.
+
+### Fixed — correctness
+- **Context % told the truth again.** A `<synthetic>` zero-usage record could pin a ~90%-full
+  session at "0% ctx" exactly when the warning mattered; 1M sessions under 200k tokens read ~5×
+  inflated (the `[1m]` marker lives only in the Desktop store); Bedrock/Vertex model ids were
+  excluded entirely. All three paths now measure the real window.
+- **Live Codex terminals exist now.** `codex` TUI processes are matched to their rollouts (by
+  `resume <id>` argv or working directory) — an open TUI is recallable (never offered a
+  double-attaching "resume"), pulls its thread back into the list even after a day idle, and
+  closed CLI threads show as "Ended — resume" for 24h (they used to vanish after 3h with no
+  path back). Dashboard search now reaches Codex threads over 14 days. New-format Codex
+  sub-agents (`parent_thread_id`) render as children again.
+- **Phantom sessions are dead.** A stale live-state file whose pid was recycled after a
+  crash/reboot no longer resurrects as a frozen "live" row that blocks resuming the real
+  session (`procStart` is compared with the actual process start time — in UTC *and* local
+  readings, so no timezone can mass-kill real sessions).
+- **Takeovers are visible.** `claude --continue` / `-c` / the `-r` picker / `--resume=<id>` are
+  detected (previously only `--resume <id>`), resolved to the transcript the process actually
+  appends to, and shown live — instead of leaving a stale "saved Desktop" row that could
+  double-resume the same conversation. Sessions with a Desktop counterpart carry an
+  **app→cli** lineage chip.
+- **Companions nest under the right parent.** A live session now beats an ended/saved one that
+  shares its branch/PR/worktree key (children used to attach to the "Ended" row); the
+  singleton-repo fallback only considers live sessions; a claimed companion's own sub-agents
+  are lifted to the parent instead of silently dropped; still-busy parallel companion runs are
+  never deduped away; quoted text can no longer fabricate phantom sub-agent children.
+- **Status/attention honesty.** argv-resumed sessions no longer show a permanent false "Your
+  turn" (status is inferred from transcript activity and marked assumed); `bg`/`daemon`
+  sessions never promote to "Your turn"; running Task sub-agents show as working, not idle;
+  archived Desktop conversations stay hidden from the ended list and search; ended CLI
+  sessions keep the name you gave them (`custom-title`); notifications fire only on genuine
+  turn completions — resuming a session yourself is silent.
+- **Desktop rows resume safely.** Clicking a saved Desktop conversation resumes it in a
+  terminal (targeted at that exact session) instead of blindly fronting Claude.app; if its
+  transcript is gone from disk, it falls back to opening the app instead of dead-ending.
+  Double-clicking resume can't attach two terminals anymore.
+- Sessions in paths with spaces/`~` (iCloud/Obsidian vaults) resolve their transcripts again —
+  their timestamps had been frozen at the Desktop store's stale value, greying them out as
+  dead while they were active hours ago.
+- PR chip's number and click target can no longer disagree; dashboard search matches the last
+  prompt (and agrees with the popover); a user-widened window is no longer snapped back to
+  430pt on every reopen; stale-fade no longer greys out rows that still need approval.
+
+### Fixed — performance
+- Rollout sub-agent scanning is incremental (a 125MB rollout was re-read, unescaped and
+  regex-scanned in full on every 2s tick while active). The Codex directory walk is cached
+  (15s) and prunes old date dirs. `git rev-parse` failures and first-failure `gh` fetches are
+  cached (each used to respawn a subprocess every 2s, forever, per affected session).
+  Automation `nextRun` (thousands of Calendar calls per rule) is computed only when the file
+  changes or the run passes. Process snapshots retry on spawn bursts instead of blanking every
+  terminal for a tick. Missing-folder git probes left the main thread.
+
+### Changed — UI/UX (judge-panel winners)
+- **Recent mode renders attention tiers** — *Needs you / Working / Idle* section headers plus a
+  collapsed **Saved & ended** shelf, so the actionable rows dominate; search sees through the
+  shelf.
+- **Needs-you rows carry a leading edge bar** (red/yellow; approval rows add a faint red tint)
+  so urgency survives peripheral vision instead of resting on a 9pt dot.
+- **The source badge shows the surface**: filled terminal = live terminal attached, outline
+  terminal = closed CLI session, macwindow = Desktop app conversation.
+- **The blue resume chip appears whenever a click will resume** (saved Desktop rows included)
+  and names the target terminal in its hint — the "opens a new terminal" side effect is
+  visible before the click.
+- **The menu-bar popover triages by default** (needs-you + working, count shown as "n / total")
+  with a persisted "Show all" toggle and an honest all-quiet empty state.
+- **Repeated routine runs collapse** into one row with an **×N runs** toggle chip.
+- **Children are informative**: status word + age per line; the collapsed sub-agent count chip
+  tints with the busiest child's color. A **CLI source filter** mutes the Desktop archive.
+- Hover actions moved into the title line — the overlay used to cover (and steal clicks from)
+  the PR chip. Menu-bar counts and popover height follow the rendered tree, not the flat list.
+
 ## [0.3.9] — 2026-07-01
 
 ### Fixed

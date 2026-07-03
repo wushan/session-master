@@ -22,11 +22,22 @@ public enum SessionTree {
         var claudeByPR: [String: UnifiedSession] = [:]         // projectRoot + PR number
         var claudeByWorktree: [String: UnifiedSession] = [:]   // projectRoot + worktree name
         var claudeByRoot: [String: [UnifiedSession]] = [:]
+        // When two Claude sessions share a key (yesterday's ended session + today's live one on
+        // the same branch/worktree), the companion belongs under the one the user is actually
+        // working with — the better attention rank. The input is rank-sorted ascending, so plain
+        // last-write-wins would hand children to the ENDED session instead.
+        func register(_ dict: inout [String: UnifiedSession], _ k: String, _ s: UnifiedSession) {
+            if let old = dict[k], old.attention.rank <= s.attention.rank { return }
+            dict[k] = s
+        }
         for s in sessions where s.source.isClaude {
-            claudeByRoot[s.projectRoot, default: []].append(s)
-            if let b = s.branch, !b.isEmpty { claudeByKey[key(s.projectRoot, b)] = s }
-            if let pr = s.rich.prNumber { claudeByPR[key(s.projectRoot, String(pr))] = s }
-            if let wt = s.worktreeKey { claudeByWorktree[key(s.projectRoot, wt)] = s }
+            // The singleton-root fallback may only pick a LIVE CLI session: ended and
+            // desktop-saved rows would otherwise inflate the count (blocking the fallback in any
+            // repo with saved sessions) or adopt a busy companion under an "Ended" row.
+            if !s.isEnded, s.pid != nil { claudeByRoot[s.projectRoot, default: []].append(s) }
+            if let b = s.branch, !b.isEmpty { register(&claudeByKey, key(s.projectRoot, b), s) }
+            if let pr = s.rich.prNumber { register(&claudeByPR, key(s.projectRoot, String(pr)), s) }
+            if let wt = s.worktreeKey { register(&claudeByWorktree, key(s.projectRoot, wt), s) }
         }
 
         var childrenOf = extraChildren
@@ -46,6 +57,12 @@ public enum SessionTree {
             else { continue }
             childrenOf[parent.id, default: []].append(s)
             claimed.insert(s.id)
+            // A claimed companion may itself have pre-seeded children (its sub-agents, via
+            // extraChildren). The tree renders one level deep, so lift them to the parent —
+            // otherwise they'd silently vanish with the claimed id.
+            if let grand = childrenOf.removeValue(forKey: s.id) {
+                childrenOf[parent.id, default: []] += grand
+            }
         }
 
         return sessions

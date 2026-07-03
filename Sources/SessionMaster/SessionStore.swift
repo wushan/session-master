@@ -10,6 +10,10 @@ import SessionCore
 final class SessionStore {
     private(set) var sessions: [UnifiedSession] = []
     private(set) var subagentChildren: [String: [UnifiedSession]] = [:]
+    /// The parent→child tree over `sessions` — built once per refresh so the menu-bar counts
+    /// agree with what's actually visible (claimed companions render as collapsed children;
+    /// counting them at top level shows badge numbers the user can't find in the list).
+    private(set) var nodes: [SessionNode] = []
     private(set) var jobs: [ScheduledJob] = []
     private(set) var accessibilityTrusted = false
     private(set) var launchAtLogin = false
@@ -63,6 +67,7 @@ final class SessionStore {
                 guard let self else { return }
                 self.sessions = snap.sessions
                 self.subagentChildren = snap.subagents
+                self.nodes = SessionTree.build(snap.sessions, extraChildren: snap.subagents)
                 self.jobs = jobs
                 self.accessibilityTrusted = trusted
                 self.lastRefresh = Date()
@@ -85,8 +90,14 @@ final class SessionStore {
                     Notifier.fire(title: s.displayTitle, body: "Needs your approval",
                                   soundName: "Funk", withSound: settings.soundEnabled)
                 case .awaitingYou:
-                    Notifier.fire(title: s.displayTitle, body: "Finished — your turn",
-                                  soundName: "Glass", withSound: settings.soundEnabled)
+                    // Only a genuine turn-completion is news (it was working, blocked on an
+                    // approval, or in an unrecognized-but-live status). idle/ended → awaitingYou
+                    // flips happen when the user themself resumes a session or a saved row goes
+                    // live — notifying those is noise.
+                    if old == .working || old == .needsApproval || old == .unknown {
+                        Notifier.fire(title: s.displayTitle, body: "Finished — your turn",
+                                      soundName: "Glass", withSound: settings.soundEnabled)
+                    }
                 default: break
                 }
             }
@@ -95,9 +106,11 @@ final class SessionStore {
         notifyArmed = true
     }
 
-    var needsApprovalCount: Int { sessions.filter { $0.attention == .needsApproval }.count }
-    var awaitingYouCount: Int { sessions.filter { $0.attention == .awaitingYou }.count }
-    var workingCount: Int { sessions.filter { $0.attention == .working }.count }
+    /// Attention counts over top-level rows only (children are collapsed by default — a badge
+    /// number the user can't see anywhere in the list reads as a phantom).
+    var needsApprovalCount: Int { nodes.filter { $0.session.attention == .needsApproval }.count }
+    var awaitingYouCount: Int { nodes.filter { $0.session.attention == .awaitingYou }.count }
+    var workingCount: Int { nodes.filter { $0.session.attention == .working }.count }
     var needsYouCount: Int { needsApprovalCount + awaitingYouCount }
 
     func recall(_ s: UnifiedSession) {
@@ -131,13 +144,35 @@ final class SessionStore {
         }
     }
 
+    private var resumingIds: Set<String> = []
+
     /// Reopen an ended CLI session: launch the chosen terminal running its resume command in its cwd.
     func resume(_ s: UnifiedSession) {
         guard let cmd = s.resumeCommand else { return }
+        // A double-click (or two clicks before the next poll notices the new process) would
+        // launch two terminals attached to the same session — guard per id for a few seconds.
+        guard resumingIds.insert(s.id).inserted else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            self?.resumingIds.remove(s.id)
+        }
         // Need a real folder: `cd '' || exit 1` does NOT abort (empty operand is a no-op), so an
         // empty cwd would silently resume in $HOME — the wrong place. Refuse instead.
         guard !s.cwd.isEmpty else {
             lastRecallMessage = "Can’t resume “\(s.displayTitle)” — its folder is unknown."
+            return
+        }
+        // The Desktop store outlives the CLI's transcript retention: a session whose history was
+        // cleaned up would open a terminal that just prints "No conversation found" and exits.
+        // For a saved Desktop row, don't dead-end — the conversation may still live inside
+        // Claude.app, so fall back to fronting it (the pre-resume-priority behavior).
+        if s.source.isClaude,
+           ClaudeHistoryEnricher.transcriptURL(sessionId: s.id, cwd: s.cwd) == nil {
+            if s.source == .claudeDesktop {
+                lastRecallMessage = "No transcript on disk — opened Claude app instead."
+                recall(s)
+            } else {
+                lastRecallMessage = "Can’t resume “\(s.displayTitle)” — its history is no longer on disk."
+            }
             return
         }
         // The folder gone — old behaviour ran `cd` into a missing dir, so the terminal opened and
@@ -162,22 +197,36 @@ final class SessionStore {
     /// The session's folder no longer exists. If it's a recreatable `.claude/worktrees/...` worktree
     /// (repo present, branch still exists), prompt to recreate it and resume; otherwise explain why
     /// resume can't proceed instead of silently flashing a terminal open and shut.
+    /// The git probes run off the main thread (a stalled git would otherwise freeze the whole UI
+    /// for up to Shell's watchdog) — only the alerts hop back.
     private func handleMissingFolder(_ s: UnifiedSession, command cmd: String) {
         let path = s.cwd
-        guard let repo = GitWorktree.repoRootForWorktreePath(path),
-              FileManager.default.fileExists(atPath: repo),
-              let branch = s.branch, !branch.isEmpty, branch != "HEAD",
-              GitWorktree.branchExists(branch, repo: repo) else {
-            let alert = NSAlert()
-            alert.messageText = "Can’t resume “\(s.displayTitle)”"
-            alert.informativeText = "Its folder no longer exists:\n\(path)\n\nThe conversation history is intact, but its working directory is gone, so it can’t be reopened from here."
-            alert.addButton(withTitle: "OK")
-            NSApp.activate(ignoringOtherApps: true)
-            alert.runModal()
-            lastRecallMessage = "Can’t resume — “\(path)” no longer exists."
-            return
+        Task.detached(priority: .userInitiated) {
+            let repo = GitWorktree.repoRootForWorktreePath(path)
+            let recreatable: Bool
+            if let repo, FileManager.default.fileExists(atPath: repo),
+               let branch = s.branch, !branch.isEmpty, branch != "HEAD",
+               GitWorktree.branchExists(branch, repo: repo) { recreatable = true }
+            else { recreatable = false }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if recreatable, let repo, let branch = s.branch {
+                    self.promptRecreateWorktree(s, command: cmd, path: path, repo: repo, branch: branch)
+                } else {
+                    let alert = NSAlert()
+                    alert.messageText = "Can’t resume “\(s.displayTitle)”"
+                    alert.informativeText = "Its folder no longer exists:\n\(path)\n\nThe conversation history is intact, but its working directory is gone, so it can’t be reopened from here."
+                    alert.addButton(withTitle: "OK")
+                    NSApp.activate(ignoringOtherApps: true)
+                    alert.runModal()
+                    self.lastRecallMessage = "Can’t resume — “\(path)” no longer exists."
+                }
+            }
         }
+    }
 
+    private func promptRecreateWorktree(_ s: UnifiedSession, command cmd: String,
+                                        path: String, repo: String, branch: String) {
         let alert = NSAlert()
         alert.messageText = "Recreate worktree to resume?"
         alert.informativeText = "The folder for “\(s.displayTitle)” is gone:\n\(path)\n\nIt was a git worktree on branch “\(branch)” that’s since been removed. The conversation history is intact — recreate the worktree to resume it."
