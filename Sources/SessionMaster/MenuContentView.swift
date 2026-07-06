@@ -5,7 +5,7 @@ import SessionCore
 struct MenuContentView: View {
     @Bindable var store: SessionStore
     @Environment(\.openWindow) private var openWindow
-    @State private var expanded: Set<String> = []
+    @State private var openId: String?
     @State private var search = ""
     @State private var popoverWindow: NSWindow?
     @State private var settings = AppSettings.shared
@@ -61,7 +61,7 @@ struct MenuContentView: View {
                 ScrollView {
                     VStack(spacing: 4) {
                         ForEach(nodes) { node in
-                            SessionNodeView(node: node, expanded: $expanded, store: store)
+                            SessionNodeView(node: node, openId: $openId, store: store)
                         }
                     }.padding(8)
                 }

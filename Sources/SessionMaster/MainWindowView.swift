@@ -40,7 +40,8 @@ struct MainWindowView: View {
     // Ended sessions older than the loaded window that match the current search — fetched on demand
     // (debounced) so typing can find/resume a session closed days ago without bloating the default list.
     @State private var olderResults: [UnifiedSession] = []
-    @State private var expandedNodes: Set<String> = []
+    @State private var openId: String?               // the one expanded session card (accordion)
+    @State private var openAuto: String?             // the one expanded automation card
     @State private var expandedProjects: Set<String> = []
     // The "Saved & ended" shelf (Recent mode) starts folded — dozens of saved Desktop
     // conversations must not bury the handful of live rows. Search always sees through it.
@@ -375,7 +376,7 @@ struct MainWindowView: View {
                     let shown = expanded ? group.nodes : Array(group.nodes.prefix(perProjectLimit))
                     Section {
                         ForEach(shown) { node in
-                            SessionNodeView(node: node, expanded: $expandedNodes, store: store)
+                            SessionNodeView(node: node, openId: $openId, store: store)
                                 .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
                         }
                         if group.nodes.count > perProjectLimit {
@@ -406,30 +407,40 @@ struct MainWindowView: View {
 
     @ViewBuilder private var automationsList: some View {
         if store.jobs.isEmpty {
-            emptyState("No automations or routines")
+            StatePanel(systemImage: "clock.arrow.2.circlepath", iconTint: .secondary,
+                       title: "No automations or routines",
+                       subtitle: "Codex automations and Claude routines you schedule appear here.")
         } else {
-            List {
-                ForEach([ScheduledJob.Source.codex, .claude], id: \.self) { src in
-                    let items = store.jobs.filter { $0.source == src }
-                    if !items.isEmpty {
-                        Section(src == .codex ? "Codex automations" : "Claude routines") {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach([ScheduledJob.Source.codex, .claude], id: \.self) { src in
+                        let items = store.jobs.filter { $0.source == src }
+                        if !items.isEmpty {
+                            sectionCaption(src == .codex ? "Codex automations" : "Claude routines")
                             ForEach(items) { job in
-                                JobRowView(job: job, onVSCode: { store.openInVSCode(path: $0) })
+                                JobRowView(job: job, isOpen: openAuto == job.id,
+                                           onToggle: { openAuto = (openAuto == job.id) ? nil : job.id },
+                                           onVSCode: { store.openInVSCode(path: $0) })
+                                    .padding(.horizontal, 6)
                             }
                         }
                     }
-                }
-            }.listStyle(.inset)
+                }.padding(.vertical, 6)
+            }
         }
+    }
+
+    private func sectionCaption(_ t: String) -> some View {
+        Text(t.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.9)
+            .foregroundStyle(.tertiary).padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 3)
     }
 
     /// One tier's rows. Leading alignment + full-width rows so a row wider than the (narrow)
     /// window truncates on the right instead of centering and clipping both edges. isFirst/isLast
     /// trim the timeline rail per section, giving each tier its own clean rail run.
     @ViewBuilder private func tierRows(_ rows: [RowItem]) -> some View {
-        ForEach(Array(rows.enumerated()), id: \.element.id) { idx, item in
-            SessionNodeView(node: item.node, expanded: $expandedNodes, store: store,
-                            isFirst: idx == 0, isLast: idx == rows.count - 1,
+        ForEach(rows) { item in
+            SessionNodeView(node: item.node, openId: $openId, store: store,
                             runCount: item.runCount,
                             onToggleRuns: item.key.map { k in { toggleRoutineGroup(k) } })
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -468,9 +479,14 @@ struct MainWindowView: View {
               : "Show \(count) saved/ended sessions")
     }
 
-    private func emptyState(_ text: String) -> some View {
-        VStack { Spacer(); Text(text).foregroundStyle(.secondary); Spacer() }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    @ViewBuilder private func emptyState(_ text: String) -> some View {
+        if store.sessions.isEmpty {
+            StatePanel(systemImage: "terminal", iconTint: .secondary, title: "No active sessions",
+                       subtitle: "Start Claude Code or Codex in a terminal and it shows up here.")
+        } else {
+            StatePanel(systemImage: "magnifyingglass", iconTint: .secondary, title: text,
+                       subtitle: "No session matches your filter or search.")
+        }
     }
 
     private var loadingState: some View {

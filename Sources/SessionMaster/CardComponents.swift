@@ -1,0 +1,139 @@
+import SwiftUI
+import SessionCore
+
+// The card design system (v0.5.0): a small palette, a context ring, brood pips for children,
+// a source badge, chips, and the shared empty/quiet/permission state panel. Everything else
+// (colors that mean session state) comes from Attention.color in AttentionStyle.swift.
+
+extension Color {
+    /// Chrome accent — the only strong color that isn't a session state. Primary buttons, selected
+    /// controls, links, focus. A desaturated sage (#7fb0a8), terminal-adjacent, quiet.
+    static let sage = Color(red: 0.498, green: 0.690, blue: 0.659)
+    /// A calm context-ring fill while the budget is still healthy (#5f8f7e).
+    static let ctxLow = Color(red: 0.372, green: 0.561, blue: 0.494)
+    static let claudeHue = Color(red: 1.0, green: 0.624, blue: 0.039)   // #ff9f0a
+    static let codexHue = Color(red: 0.749, green: 0.353, blue: 0.941)  // #bf5af0
+}
+
+/// Context-window gauge. A ring that fills with usage; it stays calm (sage-green) until the budget
+/// tightens, then warns amber (≥70%) and red (≥85%). The collapsed row shows a small unlabeled one
+/// only when it's getting high; the expanded card shows the labeled one always.
+struct ContextRing: View {
+    let percent: Int
+    var size: CGFloat = 34
+    var showLabel = true
+
+    var color: Color { percent >= 85 ? .red : percent >= 70 ? .yellow : .ctxLow }
+    private var lw: CGFloat { max(2, size * 0.09) }
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.08), lineWidth: lw)
+            Circle().trim(from: 0, to: min(1, CGFloat(percent) / 100))
+                .stroke(color, style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if showLabel {
+                Text("\(percent)")
+                    .font(.system(size: size * 0.31, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: size, height: size)
+        .help("\(percent)% of context window used")
+    }
+}
+
+/// Brood pips — how a collapsed card signals what it spawned. Only *loud* children draw a mark:
+/// needs-approval (red) first, then working (green), capped at three with a `+N` overflow. Children
+/// that exist but are all quiet fold into one hollow ring; no children draws nothing. The whole
+/// thing is display-only (a `.help` census on hover), so the row keeps its single click = expand.
+struct BroodPips: View {
+    let children: [UnifiedSession]
+
+    private var loud: [UnifiedSession] {
+        children.filter { $0.attention == .needsApproval || $0.attention == .working }
+            .sorted { $0.attention.rank < $1.attention.rank }   // needsApproval (0) before working (2)
+    }
+    private var census: String {
+        let order: [(UnifiedSession.Attention, String)] =
+            [(.needsApproval, "needs approval"), (.working, "working"), (.awaitingYou, "your turn")]
+        var parts = order.compactMap { (st, name) -> String? in
+            let n = children.filter { $0.attention == st }.count
+            return n > 0 ? "\(n) \(name)" : nil
+        }
+        let idle = children.filter { $0.attention == .idle || $0.attention == .ended }.count
+        if idle > 0 { parts.append("\(idle) idle") }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        if children.isEmpty {
+            EmptyView()
+        } else if loud.isEmpty {
+            Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.4)
+                .frame(width: 6, height: 6).help("Sub-agents · " + census)
+        } else {
+            HStack(spacing: 3) {
+                ForEach(Array(loud.prefix(3).enumerated()), id: \.offset) { _, c in
+                    Circle().fill(c.attention.color).frame(width: 5, height: 5)
+                }
+                if loud.count > 3 {
+                    Text("+\(loud.count - 3)")
+                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(.tertiary)
+                }
+            }
+            .help(census)
+        }
+    }
+}
+
+/// The surface glyph carried on the source badge: where the session actually lives. A filled
+/// terminal = a live terminal you can recall, an outline terminal = a closed CLI session, a
+/// macwindow = a Desktop-app conversation.
+func surfaceGlyph(_ s: UnifiedSession) -> String {
+    switch s.source {
+    case .claudeDesktop, .codexDesktop: return "macwindow"
+    case .claudeCLI, .codexCLI:
+        return (s.terminal.terminalPID != nil || s.terminal.viaTmux) ? "terminal.fill" : "terminal"
+    }
+}
+func sourceHue(_ s: UnifiedSession) -> Color { s.source.isCodex ? .codexHue : .claudeHue }
+
+/// A capsule chip — always its natural size (never compresses into vertical text).
+struct Chip: View {
+    let text: String
+    let color: Color
+    var body: some View {
+        Text(text).font(.system(size: 10, weight: .semibold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(color.opacity(0.18)).foregroundStyle(color)
+            .clipShape(Capsule()).fixedSize()
+    }
+}
+
+/// The shared centered state panel: empty / all-quiet / no-permission. One icon, a headline, a
+/// quiet subline, an optional action — same restraint as the cards (one state hue + sage button).
+struct StatePanel: View {
+    let systemImage: String
+    let iconTint: Color
+    let title: String
+    let subtitle: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: systemImage).font(.system(size: 26))
+                .foregroundStyle(iconTint).padding(.bottom, 8)
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Text(subtitle).font(.system(size: 11.5)).foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center).frame(maxWidth: 240)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderedProminent).tint(.sage).controlSize(.regular)
+                    .pointerCursor().padding(.top, 10)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity).padding(40)
+    }
+}
