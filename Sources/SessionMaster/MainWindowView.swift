@@ -240,12 +240,13 @@ struct MainWindowView: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.caption)
-            TextField("Filter", text: $search).textFieldStyle(.plain).focused($searchFocused)
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).font(.system(size: 13))
+            TextField("Filter", text: $search).textFieldStyle(.plain).font(.system(size: 13))
+                .focused($searchFocused)
             if !search.isEmpty {
                 Button { search = "" } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.caption)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).font(.system(size: 13))
                 }.buttonStyle(.plain).pointerCursor()
             }
             if searchFocused {
@@ -253,7 +254,7 @@ struct MainWindowView: View {
                     .buttonStyle(.plain).font(.caption).foregroundStyle(.tint).pointerCursor()
             }
         }
-        .padding(.horizontal, 8).padding(.vertical, 5)
+        .padding(.horizontal, 10).padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(Color.primary.opacity(0.06)).clipShape(Capsule())
     }

@@ -61,42 +61,33 @@ struct SessionRowView: View {
         HStack(alignment: .top, spacing: 8) {
             timelineLeading
             VStack(alignment: .leading, spacing: 2) {
+                // Title gets a line to ITSELF — it's the one thing the user reads to identify a
+                // session, so chips must never crush it down to "S…". Only the (fixed-slot)
+                // actions menu shares this line; the badges live on the row below.
                 HStack(spacing: 6) {
                     if editing {
                         TextField("Title", text: $draft)
-                            .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 13 : 14))
-                            .frame(maxWidth: 220).focused($titleFocused)
+                            .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 14 : 15))
+                            .focused($titleFocused)
                             .onAppear { titleFocused = true }
                             .onSubmit { onRename?(draft); editing = false }
                             .onExitCommand { editing = false }
                     } else {
                         Text(session.displayTitle)
-                            .font(.system(size: isChild ? 13 : 14, weight: .medium)).lineLimit(1)
+                            .font(.system(size: isChild ? 13 : 14, weight: .medium))
+                            .lineLimit(1).truncationMode(.tail)
                         if session.rich.customTitle != nil {
                             Image(systemName: "pencil").font(.system(size: 9)).foregroundStyle(.tertiary)
                         }
-                        sourceBadge
-                        if session.fromDesktop {
-                            chip("app→cli", .orange)
-                                .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
-                        }
-                        // The chip appears whenever the primary click RESUMES (not only on ended
-                        // rows) — a saved Desktop row launches a terminal on click, and that
-                        // side effect must be visible before the click, not after.
-                        if primaryAction == .resume { resumeChip }
-                        if session.isAutomationRun { scheduleBadge("auto", .secondary) }
-                        else if session.isRoutineRun { scheduleBadge("routine", .teal) }
-                        if runCount > 1 { runCountChip }
-                        if subagentCount > 0 { subagentChip }
-                        prChip
                         Spacer(minLength: 4)
                         // One ellipsis menu, ALWAYS occupying its (small, fixed) slot and only
-                        // fading in on hover: inserting views on hover reflowed the whole line
-                        // (title truncated, chips squeezed into vertical letter-stacks), and the
-                        // old overlay covered the chips — reserved space + opacity does neither.
-                        actionsMenu.opacity(hovering && !editing ? 1 : 0)
+                        // fading in on hover: inserting views on hover reflowed the whole line,
+                        // and the old overlay covered content — reserved space + opacity does
+                        // neither.
+                        actionsMenu.opacity(hovering ? 1 : 0)
                     }
                 }
+                if !editing { badgeLine }
                 metaLine
                 HStack(spacing: 6) {
                     if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 10)) }
@@ -200,6 +191,28 @@ struct SessionRowView: View {
         case (true, false):  bar.frame(maxHeight: .infinity).padding(.top, dotCenterY)
         case (false, true):  bar.frame(height: dotCenterY)
         case (false, false): bar.frame(maxHeight: .infinity)
+        }
+    }
+
+    /// The source badge + state chips, on their own line beneath the title so they never squeeze
+    /// it. Order is stable (source first) so the eye lands in the same place every row.
+    private var badgeLine: some View {
+        HStack(spacing: 6) {
+            sourceBadge
+            if session.fromDesktop {
+                chip("app→cli", .orange)
+                    .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
+            }
+            // The chip appears whenever the primary click RESUMES (not only on ended rows) — a
+            // saved Desktop row launches a terminal on click, and that side effect must be
+            // visible before the click, not after.
+            if primaryAction == .resume { resumeChip }
+            if session.isAutomationRun { scheduleBadge("auto", .secondary) }
+            else if session.isRoutineRun { scheduleBadge("routine", .teal) }
+            if runCount > 1 { runCountChip }
+            if subagentCount > 0 { subagentChip }
+            prChip
+            Spacer(minLength: 0)
         }
     }
 
