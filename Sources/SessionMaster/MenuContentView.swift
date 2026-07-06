@@ -6,6 +6,7 @@ struct MenuContentView: View {
     @Bindable var store: SessionStore
     @Environment(\.openWindow) private var openWindow
     @State private var openId: String?
+    @State private var editingId: String?
     @State private var search = ""
     @State private var popoverWindow: NSWindow?
     @State private var settings = AppSettings.shared
@@ -47,8 +48,8 @@ struct MenuContentView: View {
         .frame(width: 380)
         .background(WindowAccessor { popoverWindow = $0 })
         // Clear the open card when filtering changes so it can't re-open a row that scrolled away.
-        .onChange(of: search) { openId = nil }
-        .onChange(of: settings.popoverShowAll) { openId = nil }
+        .onChange(of: search) { openId = nil; editingId = nil }
+        .onChange(of: settings.popoverShowAll) { openId = nil; editingId = nil }
     }
 
     @ViewBuilder private var content: some View {
@@ -72,7 +73,7 @@ struct MenuContentView: View {
                 ScrollView {
                     VStack(spacing: 4) {
                         ForEach(nodes) { node in
-                            SessionNodeView(node: node, openId: $openId, store: store)
+                            SessionNodeView(node: node, openId: $openId, editingId: $editingId, store: store)
                         }
                     }.padding(8)
                 }

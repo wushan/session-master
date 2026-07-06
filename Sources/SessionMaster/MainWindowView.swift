@@ -41,6 +41,7 @@ struct MainWindowView: View {
     // (debounced) so typing can find/resume a session closed days ago without bloating the default list.
     @State private var olderResults: [UnifiedSession] = []
     @State private var openId: String?               // the one expanded session card (accordion)
+    @State private var editingId: String?            // the one row editing its title (one at a time)
     @State private var openAuto: String?             // the one expanded automation card
     @State private var expandedProjects: Set<String> = []
     // The "Saved & ended" shelf (Recent mode) starts folded — dozens of saved Desktop
@@ -79,10 +80,10 @@ struct MainWindowView: View {
         .onChange(of: settings.dashboardAlwaysOnTop) { applyAlwaysOnTop() }
         // Don't strand the accordion on a row that filtering/sorting/tab-switching removed — a
         // reappearing row would otherwise pop back open. Clear the open card on any such change.
-        .onChange(of: search) { openId = nil }
-        .onChange(of: sourceFilter) { openId = nil }
-        .onChange(of: sortMode) { openId = nil }
-        .onChange(of: store.selectedTab) { openId = nil; openAuto = nil }
+        .onChange(of: search) { openId = nil; editingId = nil }
+        .onChange(of: sourceFilter) { openId = nil; editingId = nil }
+        .onChange(of: sortMode) { openId = nil; editingId = nil }
+        .onChange(of: store.selectedTab) { openId = nil; openAuto = nil; editingId = nil }
         // Menu-bar apps (.accessory) have no Dock tile, so a minimized window vanishes with no
         // way back. While the dashboard is open, become a regular app so it gets a Dock icon and
         // minimize works; drop back to menu-bar-only only once it's really gone — deferred + guarded
@@ -382,7 +383,7 @@ struct MainWindowView: View {
                     let shown = expanded ? group.nodes : Array(group.nodes.prefix(perProjectLimit))
                     Section {
                         ForEach(shown) { node in
-                            SessionNodeView(node: node, openId: $openId, store: store)
+                            SessionNodeView(node: node, openId: $openId, editingId: $editingId, store: store)
                                 .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))
                         }
                         if group.nodes.count > perProjectLimit {
@@ -446,7 +447,7 @@ struct MainWindowView: View {
     /// trim the timeline rail per section, giving each tier its own clean rail run.
     @ViewBuilder private func tierRows(_ rows: [RowItem]) -> some View {
         ForEach(rows) { item in
-            SessionNodeView(node: item.node, openId: $openId, store: store,
+            SessionNodeView(node: item.node, openId: $openId, editingId: $editingId, store: store,
                             runCount: item.runCount,
                             onToggleRuns: item.key.map { k in { toggleRoutineGroup(k) } })
                 .frame(maxWidth: .infinity, alignment: .leading)

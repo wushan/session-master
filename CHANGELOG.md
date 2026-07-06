@@ -2,6 +2,18 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.2] — 2026-07-06
+
+### Changed
+- **Cards expand instantly.** The double-click-to-Recall gesture was forcing every single click to
+  wait ~¼s to check for a second click — that was the expand "lag". Single-click now expands with
+  no delay; Recall is the expanded card's primary button (and the right-click menu).
+- **Renaming a title is inline and intuitive.** Hover a card and an **edit icon appears on the
+  title** (WordPress-block style) — click it to edit the title in place, then **Return** or the
+  green check saves (Esc / the ✕ cancels). The Rename button in the expanded card now carries a
+  **"Rename" label** like Editor / Finder. **Only one title edits at a time** — starting another
+  cancels the first, so you can't leave several rows half-edited.
+
 ## [0.5.1] — 2026-07-06
 
 ### Changed
