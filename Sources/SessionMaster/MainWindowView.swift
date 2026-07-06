@@ -75,6 +75,12 @@ struct MainWindowView: View {
         .background(.background)
         .background(WindowAccessor { window = $0; applyAlwaysOnTop(); applyInitialSize() })
         .onChange(of: settings.dashboardAlwaysOnTop) { applyAlwaysOnTop() }
+        // Don't strand the accordion on a row that filtering/sorting/tab-switching removed — a
+        // reappearing row would otherwise pop back open. Clear the open card on any such change.
+        .onChange(of: search) { openId = nil }
+        .onChange(of: sourceFilter) { openId = nil }
+        .onChange(of: sortMode) { openId = nil }
+        .onChange(of: store.selectedTab) { openId = nil; openAuto = nil }
         // Menu-bar apps (.accessory) have no Dock tile, so a minimized window vanishes with no
         // way back. While the dashboard is open, become a regular app so it gets a Dock icon and
         // minimize works; drop back to menu-bar-only only once it's really gone — deferred + guarded

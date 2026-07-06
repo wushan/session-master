@@ -29,6 +29,11 @@ struct SessionRowView: View {
     private var c: Color { session.attention.color }
     private var faded: Bool { session.isStale && !session.attention.needsUser }
     private var isDim: Bool { session.isEnded || (session.source == .claudeDesktop && session.pid == nil) }
+    /// A real (non-empty) approval prompt is shown as the red waiting line — which also owns the
+    /// space the subtitle would use. Both are keyed off this so an empty waitingFor can't hide both.
+    private var hasWaitingLine: Bool {
+        session.attention == .needsApproval && (session.waitingFor?.isEmpty == false)
+    }
 
     enum PrimaryAction { case recall, resume, none }
     private var primaryAction: PrimaryAction {
@@ -56,10 +61,15 @@ struct SessionRowView: View {
         .overlay(RoundedRectangle(cornerRadius: 13)
             .strokeBorder(isOpen ? Color.primary.opacity(0.10) : .clear, lineWidth: 1))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { performPrimary() }
+        // Double-click is the fast path to the terminal; it takes priority so a genuine
+        // double-click Recalls without the single-tap also toggling the card underneath. A lone
+        // click falls through to expand. Neither fires while renaming.
+        .highPriorityGesture(TapGesture(count: 2).onEnded { if !editing { performPrimary() } })
         .onTapGesture(count: 1) { if !editing { onToggle() } }
         .pointerCursor()
-        .saturation(faded && !editing ? 0 : 1)
+        // Stale fade, but an expanded card shows its full color detail (a red ctx ring, git/PR
+        // hues, the sage button) — desaturating those would hide the very signals it exists for.
+        .saturation(faded && !editing && !isOpen ? 0 : 1)
         .opacity(faded && !hovering && !isOpen && !editing ? 0.5 : 1)
         .onHover { hovering = $0 }
         .help(isOpen ? "" : "Click to expand · double-click to \(primaryVerb.lowercased())")
@@ -101,6 +111,12 @@ struct SessionRowView: View {
                     Image(systemName: "clock.arrow.2.circlepath").font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
+                // A conversation taken over from Claude Desktop: the app window is now stale, this
+                // terminal owns it. Flag it so the user never types into the wrong surface again.
+                if session.fromDesktop {
+                    Chip(text: "app→cli", color: .orange)
+                        .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
+                }
                 Image(systemName: surfaceGlyph(session)).font(.system(size: 11, weight: .medium))
                     .foregroundStyle(sourceHue(session))
                     .help(session.source.rawValue)
@@ -134,8 +150,7 @@ struct SessionRowView: View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1).padding(.bottom, 11)
             telemetry
-            if let sub = session.subtitle, !sub.isEmpty,
-               !(session.attention == .needsApproval && session.waitingFor != nil) {
+            if let sub = session.subtitle, !sub.isEmpty, !hasWaitingLine {
                 Text("“\(sub)”").font(.system(size: 12)).italic().foregroundStyle(.secondary)
                     .lineLimit(2).padding(.top, 11)
             }
@@ -173,13 +188,17 @@ struct SessionRowView: View {
     }
 
     @ViewBuilder private var gitCell: some View {
-        if let g = session.rich.git, let label = g.trackLabel ?? (g.dirtyCount > 0 ? "" : nil) {
-            HStack(spacing: 6) {
-                if !label.isEmpty { Text(label).font(mono).foregroundStyle(trackColor(g.track)) }
-                if g.dirtyCount > 0 { Text("\(g.dirtyCount)Δ").font(mono).foregroundStyle(.yellow) }
+        // Only when there IS a repo. A nil git means "not a git dir" — asserting "clean" there
+        // would be a false claim about a working tree that doesn't exist.
+        if let g = session.rich.git {
+            if g.trackLabel != nil || g.dirtyCount > 0 {
+                HStack(spacing: 6) {
+                    if let label = g.trackLabel { Text(label).font(mono).foregroundStyle(trackColor(g.track)) }
+                    if g.dirtyCount > 0 { Text("\(g.dirtyCount)Δ").font(mono).foregroundStyle(.yellow) }
+                }
+            } else {
+                Text("clean").font(mono).foregroundStyle(.tertiary)
             }
-        } else {
-            Text("clean").font(mono).foregroundStyle(.tertiary)
         }
     }
 
@@ -259,8 +278,16 @@ struct SessionRowView: View {
             if k.attention == .needsApproval {
                 Text("NEEDS APPROVAL").font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .tracking(0.5).foregroundStyle(.red)
-            } else if let age = relativeAge(k.updatedAt) {
-                Text(age).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.tertiary)
+            } else {
+                // Surface a working / your-turn child in words + color, not just a bare timestamp,
+                // so an active or waiting sub-agent reads without decoding the dot.
+                if k.attention == .working || k.attention == .awaitingYou {
+                    Text(k.attention.label.lowercased())
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(k.attention.color)
+                }
+                if let age = relativeAge(k.updatedAt) {
+                    Text(age).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.tertiary)
+                }
             }
         }
     }

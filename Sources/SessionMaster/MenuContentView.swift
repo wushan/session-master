@@ -42,6 +42,17 @@ struct MenuContentView: View {
             header
             searchBar
             Divider()
+            content
+        }
+        .frame(width: 380)
+        .background(WindowAccessor { popoverWindow = $0 })
+        // Clear the open card when filtering changes so it can't re-open a row that scrolled away.
+        .onChange(of: search) { openId = nil }
+        .onChange(of: settings.popoverShowAll) { openId = nil }
+    }
+
+    @ViewBuilder private var content: some View {
+        Group {
             let sessions = popoverSessions
             if !store.hasLoaded {
                 HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Loading sessions…").foregroundStyle(.secondary) }
@@ -91,8 +102,6 @@ struct MenuContentView: View {
             Divider()
             footer
         }
-        .frame(width: 380)
-        .background(WindowAccessor { popoverWindow = $0 })
     }
 
     private var searchBar: some View {
@@ -140,11 +149,14 @@ struct MenuContentView: View {
     }
 
     @State private var showJobs = false
+    @State private var openAuto: String?
     private var automations: some View {
         DisclosureGroup(isExpanded: $showJobs) {
             VStack(spacing: 2) {
                 ForEach(store.jobs) { job in
-                    JobRowView(job: job, onVSCode: { store.openInVSCode(path: $0) })
+                    JobRowView(job: job, isOpen: openAuto == job.id,
+                               onToggle: { openAuto = (openAuto == job.id) ? nil : job.id },
+                               onVSCode: { store.openInVSCode(path: $0) })
                 }
             }.padding(.horizontal, 8).padding(.bottom, 6)
         } label: {

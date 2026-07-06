@@ -51,9 +51,12 @@ puts it in one place, with one-click recall.
 - **Status that tells you what each session needs** — your turn, needs approval, working, idle
   — with **sound + Notification Center alerts** when a session finishes its turn or hits a
   permission prompt.
-- **Rich at-a-glance status on each row**: git branch state (merged / ↑unpushed / ↓behind /
-  local), uncommitted change count, **clickable PR badge** (open / draft / merged), context-
-  window %, and the session's last prompt.
+- **Accordion cards** — each session is a card that's *title-first* at rest (a state dot, the
+  full-width title, a context ring only when the budget is getting tight, its source glyph, and
+  age). **Click to expand** one card at a time into an instrument readout: model · effort, branch
+  + git state, terminal/app, a **clickable PR badge**, the last prompt, and the actions inline
+  (**Recall / Resume / Editor / Finder / rename**). **Double-click** is the one-gesture jump back
+  to its terminal.
 - **Timeline list in attention tiers** — *Needs you / Working / Idle* sections with a collapsed
   **Saved & ended shelf**, so dozens of saved conversations never bury the rows that matter.
   Last-activity time sits on a left axis; a **halo ring** marks sessions that are actively
@@ -62,10 +65,11 @@ puts it in one place, with one-click recall.
   chip.
 - **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list —
   search also reaches back to find (and resume) a session you closed days ago.
-- **Parent → child hierarchy**: a Claude session nests the things it spawned — Codex companions,
-  its currently-running Task **sub-agents**, and any in-progress dynamic **workflow** run —
-  **collapsed by default** with a count, shown as compact read-only lines when expanded (children
-  can't be recalled or acted on). Finished sub-agents and completed workflows drop off.
+- **Brood pips for what a session spawned**: a collapsed card grows tiny state-colored pips when
+  it's driving children — a red pip per Codex companion / Task **sub-agent** / **workflow** that
+  needs approval, a green pip per one that's working (a hollow ring when they're all quiet). Open
+  the card and they unfold, 1:1, into a named **CHILDREN** list. So you sense an active companion
+  at a glance and never have to hunt for it.
 - **One-click Recall** (click the row): focuses the exact terminal window that owns a session, on
   whichever monitor it's on. If it's on another virtual desktop (Space), modern macOS blocks every
   programmatic Space switch, so SessionMaster fans that terminal's windows out with **App Exposé** —

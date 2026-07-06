@@ -50,28 +50,41 @@ struct ContextRing: View {
 struct BroodPips: View {
     let children: [UnifiedSession]
 
-    private var loud: [UnifiedSession] {
-        children.filter { $0.attention == .needsApproval || $0.attention == .working }
-            .sorted { $0.attention.rank < $1.attention.rank }   // needsApproval (0) before working (2)
-    }
-    private var census: String {
-        let order: [(UnifiedSession.Attention, String)] =
-            [(.needsApproval, "needs approval"), (.working, "working"), (.awaitingYou, "your turn")]
-        var parts = order.compactMap { (st, name) -> String? in
-            let n = children.filter { $0.attention == st }.count
-            return n > 0 ? "\(n) \(name)" : nil
+    /// One pass over the (tiny) child list → the loud ones (needs-approval, then your-turn, then
+    /// working — any state that wants the user or is active) and the census counts, so a collapsed
+    /// row isn't scanning the array five times per render.
+    private var summary: (loud: [UnifiedSession], census: String) {
+        var loud: [UnifiedSession] = []
+        var approval = 0, working = 0, turn = 0, idle = 0
+        for k in children {
+            switch k.attention {
+            case .needsApproval: approval += 1; loud.append(k)
+            case .awaitingYou:   turn += 1;     loud.append(k)
+            case .working:       working += 1;  loud.append(k)
+            default:             idle += 1
+            }
         }
-        let idle = children.filter { $0.attention == .idle || $0.attention == .ended }.count
-        if idle > 0 { parts.append("\(idle) idle") }
-        return parts.joined(separator: " · ")
+        loud.sort { $0.attention.rank < $1.attention.rank }
+        let parts = [(approval, "needs approval"), (turn, "your turn"),
+                     (working, "working"), (idle, "idle")]
+            .compactMap { $0.0 > 0 ? "\($0.0) \($0.1)" : nil }
+        return (loud, parts.joined(separator: " · "))
     }
 
     var body: some View {
+        let (loud, census) = summary
         if children.isEmpty {
             EmptyView()
         } else if loud.isEmpty {
-            Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.4)
-                .frame(width: 6, height: 6).help("Sub-agents · " + census)
+            // All quiet: a calm hollow ring, but keep the fan-out count visible (a session with 12
+            // idle sub-agents shouldn't look like one with 1).
+            HStack(spacing: 4) {
+                Circle().strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.4).frame(width: 6, height: 6)
+                if children.count > 1 {
+                    Text("\(children.count)").font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+            }.help("Sub-agents · " + census)
         } else {
             HStack(spacing: 3) {
                 ForEach(Array(loud.prefix(3).enumerated()), id: \.offset) { _, c in
