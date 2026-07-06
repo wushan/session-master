@@ -63,9 +63,15 @@ struct MenuBarLabel: View {
     }
 }
 
-/// Opens the dashboard window and pulls the (accessory) app forward to focus it.
+/// Opens the dashboard window and pulls the (accessory) app forward to focus it. If it was already
+/// open on another Space, drag it to the one you're on now and raise it — otherwise clicking
+/// Dashboard from another desktop switches Spaces (or looks like nothing happened).
 @MainActor
 func openDashboard(_ openWindow: OpenWindowAction) {
     openWindow(id: "main")
     NSApp.activate(ignoringOtherApps: true)
+    for w in NSApp.windows where w.title == "SessionMaster" {
+        w.collectionBehavior.insert(.moveToActiveSpace)
+        w.makeKeyAndOrderFront(nil)
+    }
 }

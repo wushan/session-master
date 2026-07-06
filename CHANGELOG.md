@@ -2,6 +2,18 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.1] — 2026-07-06
+
+### Changed
+- **The dashboard tabs moved to the bottom** — Sessions / Automations / Settings / About as big
+  buttons with a sage highlight, matching the design. Refresh is now a small icon in the Sessions
+  controls (the app auto-polls every 2s anyway).
+
+### Fixed
+- **Clicking Dashboard now brings the window to the Space you're on.** If the dashboard was already
+  open on another desktop, clicking Dashboard used to switch Spaces or appear to do nothing; it now
+  follows you to the current Space and comes to the front.
+
 ## [0.5.0] — 2026-07-06
 
 A full redesign of the interface into one card system — the same grammar for sessions,
