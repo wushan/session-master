@@ -3,7 +3,7 @@ import AppKit
 import SessionCore
 
 enum DashboardTab: String, CaseIterable {
-    case sessions = "Sessions", automations = "Automations", config = "Config", about = "About"
+    case sessions = "Sessions", automations = "Automations", config = "Settings", about = "About"
     var icon: String {
         switch self {
         case .sessions:    return "list.bullet.rectangle"
@@ -56,20 +56,22 @@ struct MainWindowView: View {
     private let perProjectLimit = 5
 
     var body: some View {
-        // A compact top tab bar (icon over label, selected one highlighted) replaces the old
-        // sidebar — it keeps the window narrow without stealing a whole column, and the tabs are
-        // always visible instead of hidden behind a toggle.
+        // A bottom tab bar (icon over label, the selected one sage-highlighted) — big, always
+        // visible, and out of the way of the content above it.
         VStack(alignment: .leading, spacing: 0) {
-            tabBar
-            Divider()
             if store.selectedTab == .sessions { sessionControls; Divider() }
             if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
-            switch store.selectedTab {
-            case .sessions:    sessionsList
-            case .automations: automationsList
-            case .config:      ConfigView(store: store)
-            case .about:       AboutView()
+            Group {
+                switch store.selectedTab {
+                case .sessions:    sessionsList
+                case .automations: automationsList
+                case .config:      ConfigView(store: store)
+                case .about:       AboutView()
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            tabBar
         }
         .frame(minWidth: 380, minHeight: 460)
         .background(.background)
@@ -105,9 +107,12 @@ struct MainWindowView: View {
     }
 
     /// Float the dashboard above other apps' windows (so the session list stays visible) when the
-    /// preference is on; back to normal when off.
+    /// preference is on; back to normal when off. Also make it follow you across Spaces — parked
+    /// on another desktop, activating it should pull it here, not switch desktops (or seem dead).
     private func applyAlwaysOnTop() {
-        window?.level = settings.dashboardAlwaysOnTop ? .floating : .normal
+        guard let window else { return }
+        window.level = settings.dashboardAlwaysOnTop ? .floating : .normal
+        window.collectionBehavior.insert(.moveToActiveSpace)
     }
 
     /// Shrink a legacy oversized window down to the new narrow default — once per install
@@ -134,22 +139,9 @@ struct MainWindowView: View {
 
     private var tabBar: some View {
         HStack(spacing: 4) {
-            ForEach([DashboardTab.sessions, .automations, .config], id: \.self) { tabButton($0) }
-            // Refresh lives here (left of About), styled like a tab (icon + label) for consistency
-            // but without the selected highlight since it's an action, not a tab. It re-scans every
-            // session's latest state now (the app also auto-polls every 2s).
-            Button { store.refresh() } label: {
-                VStack(spacing: 3) {
-                    Image(systemName: "arrow.clockwise").font(.system(size: 15, weight: .medium))
-                    Text("Refresh").font(.system(size: 10, weight: .medium)).lineLimit(1)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 6)
-                .foregroundStyle(.secondary).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).pointerCursor().help("Refresh now — re-scan all sessions")
-            tabButton(.about)
+            ForEach([DashboardTab.sessions, .automations, .config, .about], id: \.self) { tabButton($0) }
         }
-        .padding(.horizontal, 8).padding(.top, 8).padding(.bottom, 4)
+        .padding(.horizontal, 8).padding(.top, 7).padding(.bottom, 9)
     }
 
     private func tabButton(_ tab: DashboardTab) -> some View {
@@ -167,10 +159,10 @@ struct MainWindowView: View {
                 Text(tab.rawValue).font(.system(size: 10, weight: .medium)).lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            .padding(.vertical, 7)
+            .foregroundStyle(selected ? Color.sage : Color.secondary)
             .background(RoundedRectangle(cornerRadius: 8)
-                .fill(selected ? Color.accentColor.opacity(0.14) : .clear))
+                .fill(selected ? Color.sage.opacity(0.14) : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain).pointerCursor()
@@ -189,6 +181,14 @@ struct MainWindowView: View {
                 sortControl
             }
             searchField
+            if !searchFocused {
+                // Refresh moved off the (now bottom) tab bar — a quiet manual re-scan; the app
+                // also auto-polls every 2s.
+                Button { store.refresh() } label: {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 13))
+                        .foregroundStyle(.secondary).frame(width: 22, height: 22).contentShape(Rectangle())
+                }.buttonStyle(.plain).pointerCursor().help("Refresh now — re-scan all sessions")
+            }
         }
         .padding(.horizontal, 8).padding(.vertical, 10)
         .animation(.easeInOut(duration: 0.18), value: searchFocused)
