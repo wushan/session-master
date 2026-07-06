@@ -2,6 +2,40 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.0] — 2026-07-06
+
+A full redesign of the interface into one card system — the same grammar for sessions,
+automations, and settings. Designed with a judge-panel of directions and an interactive mock;
+implementation reviewed by a multi-agent pass and Codex.
+
+### Changed
+- **Sessions are accordion cards.** At rest a card is title-first and near-silent: a state dot,
+  the full-width title (it no longer gets crushed by chips), a context ring *only* when usage is
+  ≥70%, the source glyph, and age. **Single-click expands** one card at a time into an instrument
+  readout — model · effort, branch + git, terminal/app, a clickable PR badge, the last prompt,
+  and the actions inline (Recall / Resume / Editor / Finder / rename). **Double-click** Recalls
+  (the one-gesture fast path). The old timeline rail is gone; each session is a self-contained card.
+- **Brood pips** show what a session spawned without opening it: a red pip per child needing
+  approval, a green pip per working child (capped at three with a `+N`), a hollow ring when
+  children exist but are all quiet, nothing when there are none — with a full census on hover.
+  Expanding the card unfolds them 1:1 into a named CHILDREN list (companion / sub-agent / workflow,
+  each with its state and age).
+- **A context ring** replaces the "% ctx" text — calm sage-green while healthy, amber ≥70%, red
+  ≥85%.
+- **The source badge shows the surface** with a glyph: filled terminal (attached), outline
+  terminal (closed CLI), macwindow (Desktop app).
+- **Automations & Routines** are cards in the same grammar — the left edge means armed (sage) or
+  paused (dim), and next-run sits where a session's age does; expand for schedule / model / where.
+- **Settings** is regrouped into card sections with a single sage accent on the interactive part
+  of each row (toggles, dropdowns, the menu-bar icon picker) — no more default form.
+- Empty / no-sessions / no-automations use a shared, friendlier state panel.
+
+### Fixed
+- The double-click Recall gesture takes priority over the single-click expand, so a double-click
+  jumps to the terminal without also toggling the card.
+- The expanded card is cleared when you change the search, filter, sort, or tab, so it can't
+  re-open a stale row that scrolls back into view.
+
 ## [0.4.2] — 2026-07-06
 
 ### Changed

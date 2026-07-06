@@ -2,21 +2,19 @@ import SwiftUI
 import AppKit
 import SessionCore
 
+/// A session as an accordion card. Collapsed it is title-first and near-silent — the one glance you
+/// take scanning fifty rows. Single-click expands it (the list keeps one open at a time) into an
+/// instrument readout: telemetry, the last prompt, the actions inline, and the CHILDREN it spawned.
+/// Double-click (or the expanded Recall button) is the fast path back to its terminal.
 struct SessionRowView: View {
     let session: UnifiedSession
-    var isChild = false
-    var subagentCount = 0
-    /// Most urgent attention among (collapsed) children — tints the sub-agent chip so a working
-    /// or blocked child shows through the fold.
-    var childAttention: UnifiedSession.Attention? = nil
-    /// >1 == this row stands for N collapsed routine runs; renders an "×N runs" toggle chip.
+    var children: [UnifiedSession] = []
+    var isOpen: Bool = false
+    var onToggle: () -> Void = {}
+    /// >1 == this row stands for N collapsed routine runs; shows an "×N runs" toggle chip.
     var runCount = 0
     var onToggleRuns: (() -> Void)? = nil
-    // Position in a continuous-rail list: trims the rail so it starts at the first dot and ends at
-    // the last (no overhang above the top dot / no tail below the bottom one). Default false =
-    // full-height rail (used where rows don't form one continuous timeline).
-    var isFirst = false
-    var isLast = false
+
     let onRecall: () -> Void
     let onVSCode: () -> Void
     var onReveal: (() -> Void)? = nil
@@ -28,245 +26,183 @@ struct SessionRowView: View {
     @State private var draft = ""
     @FocusState private var titleFocused: Bool
 
-    private var rowVPad: CGFloat { isChild ? 5 : 7 }
-
-    /// Stale fade, except for rows that still need the user (see the modifiers below).
+    private var c: Color { session.attention.color }
     private var faded: Bool { session.isStale && !session.attention.needsUser }
+    private var isDim: Bool { session.isEnded || (session.source == .claudeDesktop && session.pid == nil) }
+    /// A real (non-empty) approval prompt is shown as the red waiting line — which also owns the
+    /// space the subtitle would use. Both are keyed off this so an empty waitingFor can't hide both.
+    private var hasWaitingLine: Bool {
+        session.attention == .needsApproval && (session.waitingFor?.isEmpty == false)
+    }
 
-    /// What a click on this row will actually do — the tap handler, the tooltip, and the blue
-    /// resume chip all read this one truth so the user can predict the click before making it.
     enum PrimaryAction { case recall, resume, none }
     private var primaryAction: PrimaryAction {
-        // A saved Desktop row's "recall" can only foreground Claude.app without navigating to
-        // this conversation — resume-in-terminal is the only action that provably lands in the
-        // clicked session, so it takes the primary click (recall stays in the context menu).
         if session.source == .claudeDesktop, session.pid == nil, session.canResume { return .resume }
         if session.canRecall { return .recall }
         if session.canResume { return .resume }
         return .none
     }
-
-    private var primaryActionHint: String {
-        switch primaryAction {
-        case .recall: return "Click to recall"
-        case .resume:
-            return "Click to resume in \(AppSettings.shared.resumeTerminal.rawValue) — opens a new terminal"
-        case .none:   return ""
-        }
+    private func performPrimary() {
+        switch primaryAction { case .recall: onRecall(); case .resume: onResume?(); case .none: break }
     }
 
     var body: some View {
-        // The whole row recalls; action buttons overlay the top-right on hover so the content
-        // (title / path / subtitle) gets the full width.
-        HStack(alignment: .top, spacing: 8) {
-            timelineLeading
-            VStack(alignment: .leading, spacing: 2) {
-                // Title gets a line to ITSELF — it's the one thing the user reads to identify a
-                // session, so chips must never crush it down to "S…". Only the (fixed-slot)
-                // actions menu shares this line; the badges live on the row below.
-                HStack(spacing: 6) {
-                    if editing {
-                        TextField("Title", text: $draft)
-                            .textFieldStyle(.roundedBorder).font(.system(size: isChild ? 14 : 15))
-                            .focused($titleFocused)
-                            .onAppear { titleFocused = true }
-                            .onSubmit { onRename?(draft); editing = false }
-                            .onExitCommand { editing = false }
-                    } else {
-                        Text(session.displayTitle)
-                            .font(.system(size: isChild ? 13 : 14, weight: .medium))
-                            .lineLimit(1).truncationMode(.tail)
-                        if session.rich.customTitle != nil {
-                            Image(systemName: "pencil").font(.system(size: 9)).foregroundStyle(.tertiary)
-                        }
-                        Spacer(minLength: 4)
-                        // One ellipsis menu, ALWAYS occupying its (small, fixed) slot and only
-                        // fading in on hover: inserting views on hover reflowed the whole line,
-                        // and the old overlay covered content — reserved space + opacity does
-                        // neither.
-                        actionsMenu.opacity(hovering ? 1 : 0)
-                    }
-                }
-                if !editing { badgeLine }
-                metaLine
-                HStack(spacing: 6) {
-                    if session.isWorktree { Image(systemName: "arrow.triangle.branch").font(.system(size: 10)) }
-                    Text(branchOrPath).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
-                    gitChips
-                }
-                if let sub = session.subtitle, !sub.isEmpty {
-                    Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1).italic()
-                }
-                if session.attention == .needsApproval, let w = session.waitingFor {
-                    Text("⏳ \(w)").font(.caption).foregroundStyle(.red).lineLimit(1)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            if session.attention == .needsApproval, let w = session.waitingFor, !w.isEmpty {
+                waitingLine(w)
             }
-            .padding(.vertical, rowVPad)
-            Spacer(minLength: 4)
+            if isOpen { body_ }
         }
+        .padding(.leading, 3)                       // room for the edge accent
+        .background(alignment: .leading) { edgeAccent }
+        .background(RoundedRectangle(cornerRadius: 13)
+            .fill(isOpen ? Color.primary.opacity(0.05) : (hovering ? Color.primary.opacity(0.035) : .clear)))
+        .overlay(RoundedRectangle(cornerRadius: 13)
+            .strokeBorder(isOpen ? Color.primary.opacity(0.10) : .clear, lineWidth: 1))
         .contentShape(Rectangle())
-        .onTapGesture {
-            switch primaryAction {
-            case .recall: onRecall()
-            case .resume: onResume?()
-            case .none:   break
-            }
-        }
-        .pointerCursor(primaryAction != .none)
-        .padding(.horizontal, 8)
-        // Rounded hover fill as a background (not a clip) so the timeline rail isn't cut at the
-        // row edges — it runs straight into the next row. Beneath it, rows that need the user get
-        // a row-level urgency treatment that survives peripheral vision (the 9pt dot alone loses
-        // to brighter chips): needsApproval = red edge bar + faint tint; awaitingYou = yellow bar.
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(!isChild && session.attention == .needsApproval
-                          ? Color.red.opacity(0.06) : .clear)
-                RoundedRectangle(cornerRadius: 8).fill(hovering ? Color.primary.opacity(0.06) : .clear)
-            }
-        }
-        .overlay(alignment: .leading) {
-            if !isChild, session.attention.needsUser {
-                Capsule().fill(session.attention.color)
-                    .frame(width: 3)
-                    .padding(.vertical, 4)
-            }
-        }
-        // Old sessions (>48h idle) fade to grayscale so the live ones stand out — still clickable.
-        // Rows that NEED the user are exempt: fading a red "needs approval" dot to gray would hide
-        // the very signal the sort and the menu-bar badge are advertising.
-        .saturation(faded && !editing ? 0 : 1)
-        .opacity(faded && !hovering && !editing ? 0.5 : 1)
+        // Double-click is the fast path to the terminal; it takes priority so a genuine
+        // double-click Recalls without the single-tap also toggling the card underneath. A lone
+        // click falls through to expand. Neither fires while renaming.
+        .highPriorityGesture(TapGesture(count: 2).onEnded { if !editing { performPrimary() } })
+        .onTapGesture(count: 1) { if !editing { onToggle() } }
+        .pointerCursor()
+        // Stale fade, but an expanded card shows its full color detail (a red ctx ring, git/PR
+        // hues, the sage button) — desaturating those would hide the very signals it exists for.
+        .saturation(faded && !editing && !isOpen ? 0 : 1)
+        .opacity(faded && !hovering && !isOpen && !editing ? 0.5 : 1)
         .onHover { hovering = $0 }
-        .help(primaryActionHint)
-        .contextMenu {
-            Button("Rename…") { draft = session.displayTitle; editing = true }
-            if session.rich.customTitle != nil {
-                Button("Reset to default title") { onRename?(nil) }
+        .help(isOpen ? "" : "Click to expand · double-click to \(primaryVerb.lowercased())")
+        .contextMenu { menu }
+        .animation(.easeOut(duration: 0.18), value: isOpen)
+    }
+
+    private var edgeAccent: some View {
+        RoundedRectangle(cornerRadius: 3).fill(c)
+            .frame(width: 3).opacity(isDim ? 0.4 : 0.9)
+            .padding(.vertical, 10)
+    }
+
+    // MARK: Collapsed header
+
+    private var header: some View {
+        HStack(spacing: 9) {
+            Circle().fill(isDim ? Color.secondary.opacity(0.5) : c).frame(width: 8, height: 8)
+                .shadow(color: session.attention == .working ? c.opacity(0.9) : .clear, radius: 3)
+            if editing {
+                TextField("Title", text: $draft)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 15))
+                    .focused($titleFocused).onAppear { titleFocused = true }
+                    .onSubmit { onRename?(draft); editing = false }
+                    .onExitCommand { editing = false }
+            } else {
+                Text(session.displayTitle)
+                    .font(.system(size: 15.5, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                if session.rich.customTitle != nil {
+                    Image(systemName: "pencil").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 6)
+                if let ctx = session.rich.contextPercent, ctx >= 70 {
+                    ContextRing(percent: ctx, size: 16, showLabel: false)
+                }
+                BroodPips(children: children)
+                if runCount > 1 { runChip }
+                if session.isAutomationRun || session.isRoutineRun {
+                    Image(systemName: "clock.arrow.2.circlepath").font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                // A conversation taken over from Claude Desktop: the app window is now stale, this
+                // terminal owns it. Flag it so the user never types into the wrong surface again.
+                if session.fromDesktop {
+                    Chip(text: "app→cli", color: .orange)
+                        .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
+                }
+                Image(systemName: surfaceGlyph(session)).font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(sourceHue(session))
+                    .help(session.source.rawValue)
+                Text(relativeAge(session.updatedAt) ?? "").font(.system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isOpen ? 90 : 0))
             }
-            Divider()
-            if session.canRecall { Button("Recall window") { onRecall() } }
-            if session.canResume { Button("Resume in Terminal") { onResume?() } }
-            Button("Open in editor") { onVSCode() }
-            if let onReveal { Button("Reveal in Finder") { onReveal() } }
         }
+        .padding(.horizontal, 12).padding(.vertical, 11)
     }
 
-    /// A vertical timeline rail: the last-activity time sits on the left as the axis, then one
-    /// full-height line runs top-to-bottom of the row with the status dot riding on it near the
-    /// title. Because the line fills the whole row height and rows are stacked flush, the rails of
-    /// consecutive rows join into a single continuous vertical timeline (not a per-row segment).
-    @ViewBuilder private var timelineLeading: some View {
-        if isChild {
-            Circle().fill(session.attention.color).frame(width: 7, height: 7)
-                .padding(.top, 4).help(session.attention.label)
-        } else {
-            HStack(alignment: .top, spacing: 5) {
-                Text(relativeAge ?? "").font(.system(size: 11)).foregroundStyle(.tertiary)
-                    .frame(width: 28, alignment: .trailing).padding(.top, titleCenterY - 6.5)
-                ZStack(alignment: .top) {
-                    railLine
-                    TimelineDot(color: session.attention.color, pulsing: session.attention == .working)
-                        .padding(.top, titleCenterY - 4.5).help(session.attention.label)
-                }.frame(width: 12)
-            }
-        }
+    private var runChip: some View {
+        Button { onToggleRuns?() } label: { Chip(text: "×\(runCount) runs", color: .teal) }
+            .buttonStyle(.plain).pointerCursor()
+            .help("\(runCount) runs of this routine — show them all")
     }
 
-    /// Vertical center of the title's first line (14pt), measured from the row's content top. The
-    /// age label and the timeline dot align to this so they sit level with the title instead of
-    /// floating above it.
-    private var titleCenterY: CGFloat { rowVPad + 8.5 }
-    /// Vertical distance from the row's top to the dot's center — where the rail starts (first row)
-    /// or ends (last row). The dot rides at the title's center.
-    private var dotCenterY: CGFloat { titleCenterY }
-
-    /// The rail segment for this row, trimmed at the ends of a continuous list: from the dot down on
-    /// the first row, top down to the dot on the last, full height in the middle, none for a lone row.
-    @ViewBuilder private var railLine: some View {
-        let bar = Rectangle().fill(.quaternary).frame(width: 1.5)
-        switch (isFirst, isLast) {
-        case (true, true):   Color.clear
-        case (true, false):  bar.frame(maxHeight: .infinity).padding(.top, dotCenterY)
-        case (false, true):  bar.frame(height: dotCenterY)
-        case (false, false): bar.frame(maxHeight: .infinity)
-        }
-    }
-
-    /// The source badge + state chips, on their own line beneath the title so they never squeeze
-    /// it. Order is stable (source first) so the eye lands in the same place every row.
-    private var badgeLine: some View {
+    private func waitingLine(_ w: String) -> some View {
         HStack(spacing: 6) {
-            sourceBadge
-            if session.fromDesktop {
-                chip("app→cli", .orange)
-                    .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
+            Image(systemName: "bolt.fill").font(.system(size: 9))
+            Text(w).font(.system(size: 11, design: .monospaced)).lineLimit(1)
+        }
+        .foregroundStyle(.red).padding(.leading, 14).padding(.trailing, 12).padding(.bottom, 9)
+    }
+
+    // MARK: Expanded body
+
+    private var body_: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1).padding(.bottom, 11)
+            telemetry
+            if let sub = session.subtitle, !sub.isEmpty, !hasWaitingLine {
+                Text("“\(sub)”").font(.system(size: 12)).italic().foregroundStyle(.secondary)
+                    .lineLimit(2).padding(.top, 11)
             }
-            // The chip appears whenever the primary click RESUMES (not only on ended rows) — a
-            // saved Desktop row launches a terminal on click, and that side effect must be
-            // visible before the click, not after.
-            if primaryAction == .resume { resumeChip }
-            if session.isAutomationRun { scheduleBadge("auto", .secondary) }
-            else if session.isRoutineRun { scheduleBadge("routine", .teal) }
-            if runCount > 1 { runCountChip }
-            if subagentCount > 0 { subagentChip }
-            prChip
-            Spacer(minLength: 0)
+            actions.padding(.top, 13)
+            if !children.isEmpty { childrenSection.padding(.top, 13) }
+        }
+        .padding(.horizontal, 14).padding(.bottom, 13)
+    }
+
+    private var telemetry: some View {
+        VStack(spacing: 10) {
+            telemetryRow(cap: "Model", value: modelText, icon: "cpu") {
+                if let ctx = session.rich.contextPercent { ContextRing(percent: ctx, size: 34) }
+                else { Text("no ctx").font(caption).foregroundStyle(.tertiary) }
+            }
+            telemetryRow(cap: "Branch", value: branchOrPath, icon: "arrow.triangle.branch") { gitCell }
+            telemetryRow(cap: "Where", value: whereText, icon: surfaceGlyph(session)) { prCell }
         }
     }
 
-    /// The surface glyph: where does this session actually live? A filled terminal = a live
-    /// terminal window you can recall; an outline terminal = a CLI session whose terminal is
-    /// gone; a macwindow = a Desktop-app conversation. The user has typed into the wrong surface
-    /// before — tool color alone (Claude/Codex) doesn't answer "which window owns this?".
-    private var surfaceGlyph: String {
-        switch session.source {
-        case .claudeDesktop, .codexDesktop:
-            return "macwindow"
-        case .claudeCLI, .codexCLI:
-            let attached = session.terminal.terminalPID != nil || session.terminal.viaTmux
-            return attached ? "terminal.fill" : "terminal"
+    private func telemetryRow<Right: View>(cap: String, value: String, icon: String,
+                                           @ViewBuilder right: () -> Right) -> some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(cap.uppercased()).font(.system(size: 9.5, weight: .semibold))
+                    .tracking(0.9).foregroundStyle(.tertiary)
+                HStack(spacing: 5) {
+                    Image(systemName: icon).font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text(value).font(mono).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 10)
+            right()
         }
     }
 
-    private var sourceBadge: some View {
-        HStack(spacing: 3) {
-            Image(systemName: surfaceGlyph).font(.system(size: 8, weight: .bold))
-            Text(session.source.isCodex ? "Codex" : "Claude")
-                .font(.system(size: 10, weight: .bold))
-        }
-        .padding(.horizontal, 5).padding(.vertical, 1)
-        .background(session.source.isCodex ? Color.purple.opacity(0.22) : Color.orange.opacity(0.22))
-        .foregroundStyle(session.source.isCodex ? .purple : .orange)
-        .clipShape(Capsule())
-        .fixedSize()   // a badge must never compress into a vertical letter-stack
-        .help(session.source.rawValue + (surfaceGlyph == "terminal.fill" ? " — terminal attached" : ""))
-    }
-
-    private func chip(_ text: String, _ color: Color) -> some View {
-        Text(text).font(.system(size: 10, weight: .semibold))
-            .padding(.horizontal, 5).padding(.vertical, 1)
-            .background(color.opacity(0.18)).foregroundStyle(color).clipShape(Capsule())
-            .fixedSize()   // chips keep their natural size; the (truncating) title flexes instead
-    }
-
-    @ViewBuilder private var gitChips: some View {
+    @ViewBuilder private var gitCell: some View {
+        // Only when there IS a repo. A nil git means "not a git dir" — asserting "clean" there
+        // would be a false claim about a working tree that doesn't exist.
         if let g = session.rich.git {
-            switch g.track {
-            case .gone:               chip("merged", .blue)
-            case .ahead(let n):       chip("↑\(n)", .orange)
-            case .behind(let n):      chip("↓\(n)", .red)
-            case .diverged(let a, let b): chip("↑\(a) ↓\(b)", .red)
-            case .noUpstream:         chip("local", .secondary)
-            case .inSync, .unknown:   EmptyView()
+            if g.trackLabel != nil || g.dirtyCount > 0 {
+                HStack(spacing: 6) {
+                    if let label = g.trackLabel { Text(label).font(mono).foregroundStyle(trackColor(g.track)) }
+                    if g.dirtyCount > 0 { Text("\(g.dirtyCount)Δ").font(mono).foregroundStyle(.yellow) }
+                }
+            } else {
+                Text("clean").font(mono).foregroundStyle(.tertiary)
             }
-            if g.dirtyCount > 0 { chip("\(g.dirtyCount)Δ", .yellow) }
         }
-        if let c = session.rich.contextPercent { chip("\(c)% ctx", c >= 80 ? .red : .secondary) }
     }
 
-    @ViewBuilder private var prChip: some View {
+    @ViewBuilder private var prCell: some View {
         if let n = session.rich.prNumber {
             let state = session.rich.prState
             let color: Color = state == "MERGED" ? .purple : (state == "CLOSED" ? .red
@@ -274,124 +210,147 @@ struct SessionRowView: View {
             Button {
                 if let s = session.rich.prURL, let url = URL(string: s) { NSWorkspace.shared.open(url) }
             } label: {
-                chip("PR#\(n)" + (state == "DRAFT" ? " draft" : ""), color)
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.pull").font(.system(size: 10))
+                    Text("#\(n)" + (state == "DRAFT" ? " draft" : "")).font(mono)
+                }.foregroundStyle(color)
+            }.buttonStyle(.plain).pointerCursor().help(session.rich.prURL ?? "Open pull request")
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: 7) {
+            if primaryAction != .none {
+                Button(action: performPrimary) {
+                    Text(primaryVerb).font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 11).padding(.vertical, 5)
+                }
+                .buttonStyle(.plain).foregroundStyle(Color(nsColor: .windowBackgroundColor))
+                .background(Color.sage, in: RoundedRectangle(cornerRadius: 8)).pointerCursor()
             }
-            .buttonStyle(.plain).pointerCursor()
-            .help(session.rich.prURL ?? "Open pull request")
-        }
-    }
-
-    /// Marks a session that a schedule started rather than a person — a Codex automation ("auto")
-    /// or a Claude routine ("routine"). Same clock glyph as the Automations tab.
-    private func scheduleBadge(_ text: String, _ color: Color) -> some View {
-        HStack(spacing: 2) {
-            Image(systemName: "clock.arrow.2.circlepath").font(.system(size: 9))
-            Text(text).font(.system(size: 10, weight: .bold))
-        }
-        .padding(.horizontal, 5).padding(.vertical, 1)
-        .background(color.opacity(0.18)).foregroundStyle(color)
-        .clipShape(Capsule())
-        .fixedSize()
-    }
-
-    /// How many Codex companions / sub-agents this session spawned (children collapse by default,
-    /// so this is the at-a-glance count). Tinted by the busiest child's attention so a working or
-    /// blocked child shows through the fold instead of hiding behind a gray count.
-    private var subagentChip: some View {
-        let tint: Color = {
-            switch childAttention {
-            case .needsApproval, .awaitingYou, .working: return childAttention!.color
-            default: return .secondary
+            ghostButton("chevron.left.forwardslash.chevron.right", "Editor", onVSCode)
+            if let onReveal { ghostButton("folder", "Finder", onReveal) }
+            if onRename != nil {
+                ghostButton("pencil", nil) { draft = session.displayTitle; editing = true }
             }
-        }()
-        return HStack(spacing: 2) {
-            Image(systemName: "person.2.fill").font(.system(size: 9))
-            Text("\(subagentCount)").font(.system(size: 10, weight: .bold))
-        }
-        .padding(.horizontal, 5).padding(.vertical, 1)
-        .background(tint.opacity(0.18)).foregroundStyle(tint)
-        .clipShape(Capsule())
-        .fixedSize()
-        .help(childAttention == .working ? "A sub-agent is working — expand to see"
-              : "Sub-agents / companions")
-    }
-
-    /// "×N runs" — this row stands for N collapsed routine runs; click to expand them.
-    private var runCountChip: some View {
-        Button { onToggleRuns?() } label: {
-            chip("×\(runCount) runs", .teal)
-        }
-        .buttonStyle(.plain).pointerCursor()
-        .help("\(runCount) runs of this routine — click to show them all")
-    }
-
-    /// Marks an ended session — the terminal is gone, but click to resume it in a new Terminal.
-    private var resumeChip: some View {
-        HStack(spacing: 2) {
-            Image(systemName: "arrow.clockwise").font(.system(size: 9, weight: .bold))
-            Text("resume").font(.system(size: 10, weight: .bold))
-        }
-        .padding(.horizontal, 5).padding(.vertical, 1)
-        .background(Color.blue.opacity(0.2)).foregroundStyle(.blue)
-        .clipShape(Capsule())
-        .fixedSize()
-    }
-
-    private var metaLine: some View {
-        HStack(spacing: 6) {
-            if let m = session.shortModel { Text(m) }
-            if let e = session.effort { Text("· \(e)") }
-            Text("·").foregroundStyle(.quaternary)
-            Text(session.terminal.terminalApp ?? originatorText)
-            if session.terminal.viaTmux { Text("· tmux") }
-        }.font(.caption).foregroundStyle(.secondary).lineLimit(1)
-    }
-
-    /// Last-activity age (shared helper in UIHelpers so child lines render the same format).
-    private var relativeAge: String? { SessionMaster.relativeAge(session.updatedAt) }
-
-    private var originatorText: String {
-        switch session.originator {
-        case "Claude Code": return "via Claude Code"
-        case "subagent":    return "sub-agent"
-        case .some(let o):  return o
-        case .none:         return session.source.rawValue
         }
     }
 
+    private func ghostButton(_ icon: String, _ label: String?, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 11))
+                if let label { Text(label).font(.system(size: 12)) }
+            }
+            .padding(.horizontal, label == nil ? 7 : 9).padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).foregroundStyle(.secondary).pointerCursor()
+        .help(label ?? "Rename")
+    }
+
+    // MARK: Children
+
+    private var childrenSection: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Text("CHILDREN").font(.system(size: 9.5, weight: .semibold)).tracking(0.9)
+                    .foregroundStyle(.tertiary)
+                Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1)
+            }
+            ForEach(childrenSorted) { kid in childRow(kid) }
+        }
+    }
+
+    private var childrenSorted: [UnifiedSession] {
+        children.sorted { $0.attention.rank < $1.attention.rank }
+    }
+
+    private func childRow(_ k: UnifiedSession) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(k.attention == .idle || k.attention == .ended
+                          ? Color.secondary.opacity(0.5) : k.attention.color)
+                .frame(width: 6, height: 6)
+            Image(systemName: childGlyph(k)).font(.system(size: 10)).foregroundStyle(.tertiary)
+            Text("\(childType(k)) · \(k.displayTitle)").font(.system(size: 12))
+                .foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 6)
+            if k.attention == .needsApproval {
+                Text("NEEDS APPROVAL").font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .tracking(0.5).foregroundStyle(.red)
+            } else {
+                // Surface a working / your-turn child in words + color, not just a bare timestamp,
+                // so an active or waiting sub-agent reads without decoding the dot.
+                if k.attention == .working || k.attention == .awaitingYou {
+                    Text(k.attention.label.lowercased())
+                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(k.attention.color)
+                }
+                if let age = relativeAge(k.updatedAt) {
+                    Text(age).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    private func childType(_ k: UnifiedSession) -> String {
+        switch k.originator {
+        case "workflow": return "workflow"
+        case "subagent": return k.source.isCodex ? "sub-agent" : "sub-agent"
+        default: return k.source.isCodex ? "companion" : "agent"
+        }
+    }
+    private func childGlyph(_ k: UnifiedSession) -> String {
+        switch k.originator {
+        case "workflow": return "gearshape.2"
+        case "subagent": return "person.2"
+        default: return "cpu"
+        }
+    }
+
+    // MARK: Context menu
+
+    @ViewBuilder private var menu: some View {
+        Button("Rename…") { draft = session.displayTitle; editing = true }
+        if session.rich.customTitle != nil { Button("Reset to default title") { onRename?(nil) } }
+        Divider()
+        if session.canRecall { Button("Recall window") { onRecall() } }
+        if session.canResume { Button("Resume in Terminal") { onResume?() } }
+        Button("Open in editor") { onVSCode() }
+        if let onReveal { Button("Reveal in Finder") { onReveal() } }
+    }
+
+    // MARK: Text bits
+
+    private let caption = Font.system(size: 11)
+    private let mono = Font.system(size: 12.5, design: .monospaced)
+    private var primaryVerb: String {
+        switch primaryAction {
+        case .recall: return "Recall"
+        case .resume: return session.isEnded || session.source.isClaude
+            ? "Resume in \(AppSettings.shared.resumeTerminal.rawValue)" : "Resume"
+        case .none: return ""
+        }
+    }
+    private var modelText: String {
+        [session.shortModel, session.effort].compactMap { $0 }.joined(separator: " · ")
+    }
     private var branchOrPath: String {
         if let b = session.branch, !b.isEmpty { return b }
-        return prettyPath(session.cwd)
-    }
-
-    // Recall/resume is the whole-row click; every secondary action lives in this one compact
-    // menu (mirrors the context menu). A single 22pt slot is cheap enough to reserve permanently,
-    // which is what keeps the row from reflowing on hover.
-    private var actionsMenu: some View {
-        Menu {
-            if onRename != nil {
-                Button("Rename…") { draft = session.displayTitle; editing = true }
-            }
-            if session.canRecall { Button("Recall window") { onRecall() } }
-            if session.canResume, let onResume {
-                Button("Resume in \(AppSettings.shared.resumeTerminal.rawValue)") { onResume() }
-            }
-            Button("Open in editor") { onVSCode() }
-            if let onReveal { Button("Reveal in Finder") { onReveal() } }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 13))
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .foregroundStyle(.secondary)
-        .help("Actions")
-        .pointerCursor()
-    }
-
-    private func prettyPath(_ p: String) -> String {
         let home = NSHomeDirectory()
-        return p.hasPrefix(home) ? "~" + p.dropFirst(home.count) : p
+        return session.cwd.hasPrefix(home) ? "~" + session.cwd.dropFirst(home.count) : session.cwd
+    }
+    private var whereText: String {
+        var s = session.terminal.terminalApp ?? (session.source.isCodex ? "Codex" : "Claude")
+        if session.source == .claudeDesktop || session.source == .codexDesktop { s += " app" }
+        if session.terminal.viaTmux { s += " · tmux" }
+        return s
+    }
+    private func trackColor(_ t: GitStatus.Track) -> Color {
+        switch t {
+        case .gone: return .blue
+        case .ahead: return .orange
+        case .behind, .diverged: return .red
+        default: return .secondary
+        }
     }
 }
