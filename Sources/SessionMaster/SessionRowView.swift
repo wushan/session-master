@@ -15,6 +15,11 @@ struct SessionRowView: View {
     var runCount = 0
     var onToggleRuns: (() -> Void)? = nil
 
+    /// Title editing is owned by the list (one row at a time), so it's driven from outside.
+    var isEditing = false
+    var onBeginEdit: () -> Void = {}
+    var onEndEdit: () -> Void = {}
+
     let onRecall: () -> Void
     let onVSCode: () -> Void
     var onReveal: (() -> Void)? = nil
@@ -22,9 +27,10 @@ struct SessionRowView: View {
     var onResume: (() -> Void)? = nil
 
     @State private var hovering = false
-    @State private var editing = false
     @State private var draft = ""
     @FocusState private var titleFocused: Bool
+
+    private func commitEdit() { onRename?(draft); onEndEdit() }
 
     private var c: Color { session.attention.color }
     private var faded: Bool { session.isStale && !session.attention.needsUser }
@@ -61,20 +67,20 @@ struct SessionRowView: View {
         .overlay(RoundedRectangle(cornerRadius: 13)
             .strokeBorder(isOpen ? Color.primary.opacity(0.10) : .clear, lineWidth: 1))
         .contentShape(Rectangle())
-        // Double-click is the fast path to the terminal; it takes priority so a genuine
-        // double-click Recalls without the single-tap also toggling the card underneath. A lone
-        // click falls through to expand. Neither fires while renaming.
-        .highPriorityGesture(TapGesture(count: 2).onEnded { if !editing { performPrimary() } })
-        .onTapGesture(count: 1) { if !editing { onToggle() } }
+        // Single click expands — instantly. (No double-click gesture: it would force every single
+        // click to wait ~0.25s to disambiguate, which is the expand "lag".) Recall is the expanded
+        // card's primary button + the context menu.
+        .onTapGesture { if !isEditing { onToggle() } }
         .pointerCursor()
         // Stale fade, but an expanded card shows its full color detail (a red ctx ring, git/PR
         // hues, the sage button) — desaturating those would hide the very signals it exists for.
-        .saturation(faded && !editing && !isOpen ? 0 : 1)
-        .opacity(faded && !hovering && !isOpen && !editing ? 0.5 : 1)
+        .saturation(faded && !isEditing && !isOpen ? 0 : 1)
+        .opacity(faded && !hovering && !isOpen && !isEditing ? 0.5 : 1)
         .onHover { hovering = $0 }
-        .help(isOpen ? "" : "Click to expand · double-click to \(primaryVerb.lowercased())")
+        .help(isOpen || isEditing ? "" : "Click to expand")
         .contextMenu { menu }
-        .animation(.easeOut(duration: 0.18), value: isOpen)
+        .onChange(of: isEditing) { if isEditing { draft = session.displayTitle; titleFocused = true } }
+        .animation(.easeOut(duration: 0.14), value: isOpen)
     }
 
     private var edgeAccent: some View {
@@ -89,16 +95,29 @@ struct SessionRowView: View {
         HStack(spacing: 9) {
             Circle().fill(isDim ? Color.secondary.opacity(0.5) : c).frame(width: 8, height: 8)
                 .shadow(color: session.attention == .working ? c.opacity(0.9) : .clear, radius: 3)
-            if editing {
+            if isEditing {
                 TextField("Title", text: $draft)
                     .textFieldStyle(.roundedBorder).font(.system(size: 15))
-                    .focused($titleFocused).onAppear { titleFocused = true }
-                    .onSubmit { onRename?(draft); editing = false }
-                    .onExitCommand { editing = false }
+                    .focused($titleFocused)
+                    .onSubmit { commitEdit() }
+                    .onExitCommand { onEndEdit() }
+                Button { commitEdit() } label: {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 15)).foregroundStyle(Color.sage)
+                }.buttonStyle(.plain).pointerCursor().help("Save (Return)")
+                Button { onEndEdit() } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 15)).foregroundStyle(.tertiary)
+                }.buttonStyle(.plain).pointerCursor().help("Cancel (Esc)")
             } else {
                 Text(session.displayTitle)
                     .font(.system(size: 15.5, weight: .semibold)).lineLimit(1).truncationMode(.tail)
-                if session.rich.customTitle != nil {
+                // Hover the row → an edit affordance appears right on the title (WordPress-block
+                // style); click it to rename inline. A renamed session keeps a quiet pencil at rest.
+                if hovering {
+                    Button { onBeginEdit() } label: {
+                        Image(systemName: "square.and.pencil").font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }.buttonStyle(.plain).pointerCursor().help("Edit title")
+                } else if session.rich.customTitle != nil {
                     Image(systemName: "pencil").font(.system(size: 9)).foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 6)
@@ -230,9 +249,7 @@ struct SessionRowView: View {
             }
             ghostButton("chevron.left.forwardslash.chevron.right", "Editor", onVSCode)
             if let onReveal { ghostButton("folder", "Finder", onReveal) }
-            if onRename != nil {
-                ghostButton("pencil", nil) { draft = session.displayTitle; editing = true }
-            }
+            if onRename != nil { ghostButton("pencil", "Rename") { onBeginEdit() } }
         }
     }
 
@@ -310,7 +327,7 @@ struct SessionRowView: View {
     // MARK: Context menu
 
     @ViewBuilder private var menu: some View {
-        Button("Rename…") { draft = session.displayTitle; editing = true }
+        Button("Rename…") { onBeginEdit() }
         if session.rich.customTitle != nil { Button("Reset to default title") { onRename?(nil) } }
         Divider()
         if session.canRecall { Button("Recall window") { onRecall() } }

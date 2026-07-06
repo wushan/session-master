@@ -8,6 +8,8 @@ import SessionCore
 struct SessionNodeView: View {
     let node: SessionNode
     @Binding var openId: String?
+    /// The single row currently editing its title — one at a time across the whole list.
+    @Binding var editingId: String?
     let store: SessionStore
     var runCount = 0
     var onToggleRuns: (() -> Void)? = nil
@@ -20,6 +22,9 @@ struct SessionNodeView: View {
             onToggle: { openId = (openId == node.id) ? nil : node.id },
             runCount: runCount,
             onToggleRuns: onToggleRuns,
+            isEditing: editingId == node.id,
+            onBeginEdit: { editingId = node.id },
+            onEndEdit: { if editingId == node.id { editingId = nil } },
             onRecall: { store.recall(node.session) },
             onVSCode: { store.openInVSCode(node.session) },
             onReveal: { store.revealInFinder(node.session) },
