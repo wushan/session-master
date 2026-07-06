@@ -66,8 +66,9 @@ struct MenuContentView: View {
                     }.padding(8)
                 }
                 // ScrollView has no intrinsic height inside a self-sizing menu-bar
-                // window, so it collapses to 0. Give it a concrete, content-aware height.
-                .frame(height: min(CGFloat(nodes.count) * 84 + 16, 520))
+                // window, so it collapses to 0. Give it a concrete, content-aware height
+                // (~100pt/row now the title and badges are on separate lines).
+                .frame(height: min(CGFloat(nodes.count) * 100 + 16, 560))
             }
             if search.isEmpty, !store.sessions.isEmpty {
                 Button {
@@ -96,15 +97,15 @@ struct MenuContentView: View {
 
     private var searchBar: some View {
         HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").font(.caption).foregroundStyle(.secondary)
-            TextField("Filter sessions", text: $search).textFieldStyle(.plain).font(.caption)
+            Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(.secondary)
+            TextField("Filter sessions", text: $search).textFieldStyle(.plain).font(.system(size: 13))
             if !search.isEmpty {
-                Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
+                Button { search = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 13)) }
                     .buttonStyle(.plain).foregroundStyle(.tertiary).pointerCursor()
             }
         }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(Color.primary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 10).padding(.vertical, 9)
+        .background(Color.primary.opacity(0.06)).clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 10).padding(.vertical, 6)
     }
 

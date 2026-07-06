@@ -2,6 +2,16 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.4.2] — 2026-07-06
+
+### Changed
+- **The session title gets its own line.** When a row carried several badges (source, PR,
+  sub-agent count…) the title was truncated down to a couple of characters ("S…") — the one
+  thing you read to tell sessions apart. Title now sits alone on the top line and takes the full
+  width; the source badge and state chips moved to a dedicated line beneath it.
+- **Bigger search field.** The Filter box (menu-bar popover and dashboard) was cramped with tiny
+  text — larger font (13pt) and a taller box.
+
 ## [0.4.1] — 2026-07-04
 
 ### Fixed
