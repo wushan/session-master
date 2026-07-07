@@ -149,6 +149,33 @@ final class SessionStore {
     /// Reopen an ended CLI session: launch the chosen terminal running its resume command in its cwd.
     func resume(_ s: UnifiedSession) {
         guard let cmd = s.resumeCommand else { return }
+        // A Desktop conversation moving into a terminal leaves the Claude Desktop window showing a
+        // stale copy — typing there loses work. Confirm once, and offer to hop to Desktop to archive
+        // the old copy so it can't be typed into. (We deliberately don't write Desktop's private
+        // store ourselves — it may cache/overwrite it — so the archive stays a one-click manual step.)
+        if s.source == .claudeDesktop, s.pid == nil, settings.confirmDesktopResume {
+            let alert = NSAlert()
+            alert.messageText = "Resume “\(s.displayTitle)” in \(settings.resumeTerminal.rawValue)?"
+            alert.informativeText = "It moves into a terminal — the Claude Desktop window won’t follow along and will show a stale copy. Archive the Desktop conversation so you don’t type into it by accident."
+            alert.addButton(withTitle: "Resume & Open Desktop")   // resume + front Claude.app to archive
+            alert.addButton(withTitle: "Resume Only")
+            alert.addButton(withTitle: "Cancel")
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "Don’t ask again for Desktop sessions"
+            NSApp.activate(ignoringOtherApps: true)
+            let choice = alert.runModal()
+            if alert.suppressionButton?.state == .on { settings.confirmDesktopResume = false }
+            switch choice {
+            case .alertFirstButtonReturn:  beginResume(s, command: cmd, thenOpenDesktop: true)
+            case .alertSecondButtonReturn: beginResume(s, command: cmd, thenOpenDesktop: false)
+            default: return   // Cancel
+            }
+            return
+        }
+        beginResume(s, command: cmd, thenOpenDesktop: false)
+    }
+
+    private func beginResume(_ s: UnifiedSession, command cmd: String, thenOpenDesktop: Bool) {
         // A double-click (or two clicks before the next poll notices the new process) would
         // launch two terminals attached to the same session — guard per id for a few seconds.
         guard resumingIds.insert(s.id).inserted else { return }
@@ -182,6 +209,11 @@ final class SessionStore {
             handleMissingFolder(s, command: cmd); return
         }
         launchResume(s, command: cmd)
+        if thenOpenDesktop {
+            // Bring Claude Desktop forward so you can archive the now-stale copy in one click.
+            AppActivator.bringToFront(appNamed: "Claude")
+            lastRecallMessage = "Resumed in \(settings.resumeTerminal.rawValue) — archive “\(s.displayTitle)” in Claude Desktop."
+        }
     }
 
     private func launchResume(_ s: UnifiedSession, command cmd: String) {

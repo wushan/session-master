@@ -2,6 +2,17 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.3] — 2026-07-07
+
+### Added
+- **Resuming a Desktop conversation in a terminal now confirms first** and offers to hop to Claude
+  Desktop so you can archive the old copy — its window goes stale the moment the terminal takes
+  over (the `app→cli` chip already flags this), and typing into the stale window loses work.
+  "Resume & Open Desktop" resumes and brings Claude Desktop forward to archive; "Resume Only"
+  skips it. A "don't ask again" checkbox (and a *Confirm Desktop resume* toggle in Settings)
+  turns it off. SessionMaster never writes Claude Desktop's own files — archiving stays a reliable
+  one-click manual step, since the app may cache/overwrite an external change.
+
 ## [0.5.2] — 2026-07-06
 
 ### Changed
