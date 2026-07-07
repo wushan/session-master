@@ -45,6 +45,9 @@ final class AppSettings {
     /// Menu-bar popover: false (default) = triage view (needs-you + working only); true = all
     /// sessions. Persisted — the popover view is recreated on every open, so @State can't hold it.
     var popoverShowAll: Bool { didSet { d.set(popoverShowAll, forKey: "popoverShowAll") } }
+    /// Ask (once per resume) to archive the Desktop copy when resuming a Desktop conversation in a
+    /// terminal, so its stale window can't be typed into. The alert's "don't ask again" flips this.
+    var confirmDesktopResume: Bool { didSet { d.set(confirmDesktopResume, forKey: "confirmDesktopResume") } }
 
     private let d = UserDefaults.standard
     private init() {
@@ -56,5 +59,6 @@ final class AppSettings {
         dashboardAlwaysOnTop = d.object(forKey: "alwaysOnTop") as? Bool ?? true
         resumeTerminal = TerminalApp(rawValue: d.string(forKey: "resumeTerminal") ?? "") ?? .systemDefault
         popoverShowAll = d.object(forKey: "popoverShowAll") as? Bool ?? false
+        confirmDesktopResume = d.object(forKey: "confirmDesktopResume") as? Bool ?? true
     }
 }

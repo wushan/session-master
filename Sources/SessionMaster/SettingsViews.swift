@@ -43,6 +43,8 @@ struct ConfigView: View {
                     toggleRow("bolt.fill", "Sound", $settings.soundEnabled)
                     rowDivider
                     toggleRow("bell", "Notifications", $settings.notificationsEnabled)
+                    rowDivider
+                    toggleRow("macwindow.on.rectangle", "Confirm Desktop resume", $settings.confirmDesktopResume)
                 }
 
                 caption("System")
