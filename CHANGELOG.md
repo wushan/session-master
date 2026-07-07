@@ -2,6 +2,19 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.5] — 2026-07-07
+
+### Fixed
+- **A Desktop conversation you archived, took over in a terminal, and renamed could vanish
+  completely — even from search.** Archiving hid it from the ended/resumable list *and* from
+  search (0.5.0), so once its terminal closed it was unfindable. Now:
+  - **Search finds everything, archived included** — it's an explicit "find that conversation"
+    action; hiding archived results is how a session gets truly lost.
+  - **Search matches the name you gave it in SessionMaster** (a rename lives in the app, not the
+    transcript, so search now looks there too).
+  - **An archived session you renamed stays in the ended list** — renaming it is a clear "I want
+    to keep this" signal, so archiving in Desktop (just cleanup) no longer hides it.
+
 ## [0.5.4] — 2026-07-07
 
 ### Changed
