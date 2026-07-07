@@ -2,6 +2,16 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.4] — 2026-07-07
+
+### Changed
+- **Tool marks tell Claude from Codex at a glance** — a hand-drawn orange **sunburst** for Claude,
+  a purple **blossom** for Codex (drawn as vector shapes; no vendor icon files in the repo).
+- **Surface is its own channel now.** Tool = the colored mark; *where it lives* = a separate
+  monochrome glyph — a terminal for a CLI session (filled when its terminal is still attached),
+  a window for a Desktop-app conversation. Previously one tinted glyph tried to carry both, which
+  made Desktop vs CLI hard to tell apart.
+
 ## [0.5.3] — 2026-07-07
 
 ### Added

@@ -136,9 +136,11 @@ struct SessionRowView: View {
                     Chip(text: "app→cli", color: .orange)
                         .help("Started in Claude Desktop — this terminal owns the conversation now; the app window is stale")
                 }
-                Image(systemName: surfaceGlyph(session)).font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(sourceHue(session))
-                    .help(session.source.rawValue)
+                // Two channels: the colored tool mark says Claude vs Codex, the monochrome glyph
+                // says terminal vs Desktop-app — so neither has to carry both at once.
+                ToolMark(session: session, size: 13)
+                Image(systemName: surfaceGlyph(session)).font(.system(size: 10.5))
+                    .foregroundStyle(.secondary).help(surfaceHelp(session))
                 Text(relativeAge(session.updatedAt) ?? "").font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(.tertiary)
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
