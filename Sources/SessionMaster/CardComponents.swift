@@ -100,9 +100,9 @@ struct BroodPips: View {
     }
 }
 
-/// The surface glyph carried on the source badge: where the session actually lives. A filled
-/// terminal = a live terminal you can recall, an outline terminal = a closed CLI session, a
-/// macwindow = a Desktop-app conversation.
+/// The surface glyph — WHERE the session lives, its own monochrome channel now that the tool
+/// (Claude/Codex) is carried by the colored ToolMark. A filled terminal = a live terminal you can
+/// recall, an outline terminal = a closed CLI session, a macwindow = a Desktop-app conversation.
 func surfaceGlyph(_ s: UnifiedSession) -> String {
     switch s.source {
     case .claudeDesktop, .codexDesktop: return "macwindow"
@@ -110,7 +110,68 @@ func surfaceGlyph(_ s: UnifiedSession) -> String {
         return (s.terminal.terminalPID != nil || s.terminal.viaTmux) ? "terminal.fill" : "terminal"
     }
 }
+func surfaceHelp(_ s: UnifiedSession) -> String {
+    switch s.source {
+    case .claudeDesktop, .codexDesktop: return "Desktop app conversation"
+    case .claudeCLI, .codexCLI:
+        return (s.terminal.terminalPID != nil || s.terminal.viaTmux)
+            ? "Terminal — attached (recallable)" : "CLI session — terminal closed"
+    }
+}
 func sourceHue(_ s: UnifiedSession) -> Color { s.source.isCodex ? .codexHue : .claudeHue }
+
+// MARK: - Tool marks (hand-drawn, brand-evoking — no vendor asset files in the repo)
+
+/// Claude's mark: an orange radial sunburst.
+struct ClaudeMark: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let c = CGPoint(x: r.midX, y: r.midY)
+        let rays = 11
+        let inner = min(r.width, r.height) * 0.12
+        for i in 0..<rays {
+            let a = CGFloat(i) / CGFloat(rays) * 2 * .pi - .pi / 2
+            let len = min(r.width, r.height) * (i % 2 == 0 ? 0.5 : 0.4)   // slight variation → organic
+            p.move(to: CGPoint(x: c.x + cos(a) * inner, y: c.y + sin(a) * inner))
+            p.addLine(to: CGPoint(x: c.x + cos(a) * len, y: c.y + sin(a) * len))
+        }
+        return p
+    }
+}
+
+/// Codex's mark: a purple six-petal blossom (evokes the OpenAI knot silhouette).
+struct CodexMark: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        let w = min(r.width, r.height)
+        let base = CGRect(x: r.midX + w * 0.05, y: r.midY - w * 0.10, width: w * 0.4, height: w * 0.2)
+        for i in 0..<6 {
+            let a = CGFloat(i) / 6 * 2 * .pi
+            let t = CGAffineTransform(translationX: r.midX, y: r.midY)
+                .rotated(by: a)
+                .translatedBy(x: -r.midX, y: -r.midY)
+            p.addPath(Path(ellipseIn: base), transform: t)
+        }
+        return p
+    }
+}
+
+/// The colored tool mark — Claude vs Codex at a glance, in the brand color.
+struct ToolMark: View {
+    let session: UnifiedSession
+    var size: CGFloat = 13
+    var body: some View {
+        Group {
+            if session.source.isCodex {
+                CodexMark().stroke(Color.codexHue, style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+            } else {
+                ClaudeMark().stroke(Color.claudeHue, style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+            }
+        }
+        .frame(width: size, height: size)
+        .help(session.source.isCodex ? "Codex" : "Claude")
+    }
+}
 
 /// A capsule chip — always its natural size (never compresses into vertical text).
 struct Chip: View {
