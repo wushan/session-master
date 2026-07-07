@@ -256,9 +256,10 @@ public enum SessionAggregator {
             if !kids.isEmpty { subagents[p.id, default: []] = kids + (subagents[p.id] ?? []) }
         }
         // Recently-ended Claude CLI sessions (terminal closed) — resumable, not currently shown.
-        // Sessions the user archived in Desktop stay hidden: resurfacing one as an "Ended — resume"
-        // row (under its AI title, no less) would undo the archiving.
-        let archived = ClaudeDesktopCollector.archivedCliIds()
+        // Sessions the user archived in Desktop stay out of this passive list (resurfacing them as
+        // "Ended — resume" would undo the archiving) — UNLESS the user renamed one in SessionMaster,
+        // which means they took it over and want to keep it (archiving in Desktop was just cleanup).
+        let archived = ClaudeDesktopCollector.archivedCliIds().subtracting(CustomTitles.allIds())
         let shownIds = Set((claude + resumed + desktop).map(\.id))
         let ended = ClaudeEndedCollector.recent(excluding: shownIds.union(archived))
             .compactMap(endedSession(from:))
@@ -287,11 +288,11 @@ public enum SessionAggregator {
 
     /// Ended sessions (beyond the default recency window) whose record matches the search query —
     /// for finding/resuming an older closed session by typing in the dashboard. Covers Claude
-    /// transcripts and Codex rollouts; Desktop-archived conversations stay hidden here too.
+    /// transcripts and Codex rollouts. Search finds EVERYTHING, archived included — it's an explicit
+    /// "find that conversation" action, and hiding archived ones is how a session goes truly lost.
     public static func searchEndedSessions(query: String, excluding: Set<String>) -> [UnifiedSession] {
-        let excl = excluding.union(ClaudeDesktopCollector.archivedCliIds())
-        return ClaudeEndedCollector.matching(query: query, excluding: excl).compactMap(endedSession(from:))
-            + codexMatching(query: query, excluding: excl)
+        ClaudeEndedCollector.matching(query: query, excluding: excluding).compactMap(endedSession(from:))
+            + codexMatching(query: query, excluding: excluding)
     }
 
     /// Codex rollouts across the 14-day scan window whose title / cwd / branch matches `query` —
@@ -387,6 +388,7 @@ public enum SessionAggregator {
             status: .idle, waitingFor: nil, terminal: .dead, updatedAt: e.updatedAt, isEnded: true)
         u.rich.aiTitle = h.aiTitle; u.rich.lastPrompt = h.lastPrompt
         u.rich.prNumber = h.prNumber; u.rich.prURL = h.prURL; u.rich.contextPercent = h.contextPercent
+        u.rich.customTitle = CustomTitles.get(e.sessionId)   // the name you gave it, in search too
         return u
     }
 
