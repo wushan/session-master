@@ -95,6 +95,15 @@ case "recall":
     case .failed(let m):          print("❌ \(m)")
     }
 
+case "ages":
+    // Verify session ordering timestamps: content-based lastActivity vs what the UI shows.
+    for s in SessionAggregator.all().sorted(by: { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }) {
+        let age = s.updatedAt.map { d -> String in
+            let m = Int(-d.timeIntervalSinceNow / 60)
+            return m < 60 ? "\(m)m" : m < 60*48 ? "\(m/60)h" : "\(m/1440)d"
+        } ?? "—"
+        print(col(age, 6) + col(s.source.rawValue, 15) + s.displayTitle.prefix(40))
+    }
 case "all":
     let rows = SessionAggregator.all()
     print("STATUS   SOURCE         MODEL            EFFORT  TERM/ORIG    PROJECT / BRANCH")

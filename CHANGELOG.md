@@ -2,6 +2,19 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.7] — 2026-07-10
+
+### Fixed
+- **Weeks-idle Desktop sessions no longer show as "21m ago".** Claude Desktop batch-rewrites old
+  transcripts when it relaunches/syncs, bumping the file's mtime with zero new content —
+  and SessionMaster ordered by mtime, so a month-dead conversation faked fresh activity. Session
+  age now comes from the transcript's newest *record timestamp* (what the conversation last
+  actually did); mtime is only a fallback when the tail carries no timestamps. A real terminal
+  resume still bumps it, because resuming appends real records.
+- The same phantom touches could resurrect long-dead sessions into the 24-hour **ended** shelf;
+  the window now checks content time too.
+- `recall-probe ages` prints every session's source/title/age for auditing ordering (debug CLI).
+
 ## [0.5.6] — 2026-07-10
 
 ### Fixed
