@@ -306,9 +306,16 @@ struct MainWindowView: View {
     }
 
     /// Flat list across all projects, most-recently-active first (needs-you still on top).
+    /// While searching, relevance wins: a session whose NAME matches the query outranks ones that
+    /// merely mention it in a prompt — attention/recency only break ties.
     private var recentNodes: [SessionNode] {
         SessionTree.build(filteredSessions, extraChildren: store.subagentChildren).sorted {
-            $0.session.attention.rank != $1.session.attention.rank
+            if !search.isEmpty {
+                let (a, b) = ($0.session.displayTitle.localizedCaseInsensitiveContains(search),
+                              $1.session.displayTitle.localizedCaseInsensitiveContains(search))
+                if a != b { return a }
+            }
+            return $0.session.attention.rank != $1.session.attention.rank
                 ? $0.session.attention.rank < $1.session.attention.rank
                 : ($0.session.updatedAt ?? .distantPast) > ($1.session.updatedAt ?? .distantPast)
         }
@@ -362,17 +369,24 @@ struct MainWindowView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     let items = collapseRoutineRuns(recentNodes)
-                    let byTier = Dictionary(grouping: items, by: { tier($0.node.session) })
-                    ForEach(Tier.allCases, id: \.self) { t in
-                        if let rows = byTier[t], !rows.isEmpty {
-                            if t == .saved && search.isEmpty {
-                                savedShelfHeader(count: rows.count)
-                                if savedShelfExpanded { tierRows(rows) }
-                            } else {
-                                tierHeader(t.rawValue, count: rows.count)
-                                tierRows(rows)
+                    if search.isEmpty {
+                        let byTier = Dictionary(grouping: items, by: { tier($0.node.session) })
+                        ForEach(Tier.allCases, id: \.self) { t in
+                            if let rows = byTier[t], !rows.isEmpty {
+                                if t == .saved {
+                                    savedShelfHeader(count: rows.count)
+                                    if savedShelfExpanded { tierRows(rows) }
+                                } else {
+                                    tierHeader(t.rawValue, count: rows.count)
+                                    tierRows(rows)
+                                }
                             }
                         }
+                    } else {
+                        // Search results: one flat relevance-ranked list. Tier sections would
+                        // scatter the best match (often an ended session — bottom tier) away
+                        // from the top while a session that merely mentions the query sat first.
+                        tierRows(items)
                     }
                 }.padding(.vertical, 6).frame(maxWidth: .infinity)
             }

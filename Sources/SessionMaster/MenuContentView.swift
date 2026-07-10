@@ -8,6 +8,7 @@ struct MenuContentView: View {
     @State private var openId: String?
     @State private var editingId: String?
     @State private var search = ""
+    @State private var olderResults: [UnifiedSession] = []
     @State private var popoverWindow: NSWindow?
     @State private var settings = AppSettings.shared
 
@@ -29,13 +30,31 @@ struct MenuContentView: View {
                 : ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
         }
         if !search.isEmpty {
-            return sorted.filter { s in
-                [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
-                    .compactMap { $0 }.joined(separator: " ").localizedCaseInsensitiveContains(search)
-            }
+            // Fold in older/archived ended matches (same scan as the dashboard) — the popover is
+            // the surface people actually search from, and a conversation archived in Desktop
+            // whose transcript is past the 24h window exists ONLY in that scan.
+            let base = sorted.filter(matchesSearch)
+            let have = Set(base.map(\.id))
+            return (base + olderResults.filter { matchesSearch($0) && !have.contains($0.id) })
+                .sorted { a, b in
+                    // The session you named is what you're looking for — a title hit outranks
+                    // attention/recency; those only break ties.
+                    let (ta, tb) = (titleHit(a), titleHit(b))
+                    if ta != tb { return ta }
+                    if a.attention.rank != b.attention.rank { return a.attention.rank < b.attention.rank }
+                    return (a.updatedAt ?? .distantPast) > (b.updatedAt ?? .distantPast)
+                }
         }
         guard !settings.popoverShowAll else { return sorted }
         return sorted.filter { $0.attention.needsUser || $0.attention == .working }
+    }
+
+    private func matchesSearch(_ s: UnifiedSession) -> Bool {
+        [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
+            .compactMap { $0 }.joined(separator: " ").localizedCaseInsensitiveContains(search)
+    }
+    private func titleHit(_ s: UnifiedSession) -> Bool {
+        s.displayTitle.localizedCaseInsensitiveContains(search)
     }
 
     var body: some View {
@@ -50,6 +69,14 @@ struct MenuContentView: View {
         // Clear the open card when filtering changes so it can't re-open a row that scrolled away.
         .onChange(of: search) { openId = nil; editingId = nil }
         .onChange(of: settings.popoverShowAll) { openId = nil; editingId = nil }
+        // Search reaches older (out-of-window / archived) closed sessions, same as the dashboard.
+        .task(id: search) {
+            guard search.count >= 2 else { olderResults = []; return }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if Task.isCancelled { return }
+            let r = await store.searchOlder(search)
+            if !Task.isCancelled { olderResults = r }
+        }
     }
 
     @ViewBuilder private var content: some View {

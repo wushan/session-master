@@ -2,6 +2,23 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.6] — 2026-07-10
+
+### Fixed
+- **The menu-bar popover's search now reaches ended and archived sessions** (same scan as the
+  dashboard). Archiving a Desktop conversation whose transcript was past the 24-hour window made
+  it unfindable *from the popover* — the surface people actually search from — even though the
+  dashboard could find it. The archive-then-resume flow the app itself recommends no longer
+  dead-ends.
+
+### Changed
+- **Search ranks by relevance.** A session whose *name* matches the query now sorts above ones
+  that merely mention it in a prompt; attention/recency only break ties. The dashboard shows
+  search results as one flat ranked list instead of attention-tier sections, which used to bury
+  the exact-name match (often an ended session — bottom tier) under active rows that only
+  mentioned the query.
+- `recall-probe search <query>` probes the full ended-session search pipeline (debug CLI).
+
 ## [0.5.5] — 2026-07-07
 
 ### Fixed

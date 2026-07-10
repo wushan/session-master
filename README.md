@@ -64,7 +64,8 @@ puts it in one place, with one-click recall.
   (unless they still need you). Repeated routine runs collapse into one row with an **×N runs**
   chip.
 - **Rename** any session to a memorable title (✏️, click to edit) and **quick-filter** the list —
-  search also reaches back to find (and resume) a session you closed days ago.
+  search (dashboard *and* menu-bar popover) also reaches back to find (and resume) a session you
+  closed days ago, archived-in-Desktop included, with name matches ranked first.
 - **Brood pips for what a session spawned**: a collapsed card grows tiny state-colored pips when
   it's driving children — a red pip per Codex companion / Task **sub-agent** / **workflow** that
   needs approval, a green pip per one that's working (a hollow ring when they're all quiet). Open
