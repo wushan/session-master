@@ -282,7 +282,13 @@ struct SessionRowView: View {
     }
 
     private var childrenSorted: [UnifiedSession] {
-        children.sorted { $0.attention.rank < $1.attention.rank }
+        // Recency tiebreak: quiet states share one rank, and Swift's sort isn't stable — without
+        // it, quiet children could reshuffle on every refresh.
+        children.sorted {
+            $0.attention.rank != $1.attention.rank
+                ? $0.attention.rank < $1.attention.rank
+                : ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
+        }
     }
 
     private func childRow(_ k: UnifiedSession) -> some View {

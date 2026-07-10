@@ -32,10 +32,14 @@ public struct UnifiedSession: Identifiable, Sendable {
             case .unknown:       return "—"
             }
         }
+        /// Sort priority. All quiet states share one rank: whether a silent session is "idle",
+        /// "ended", or unknown is a *display* distinction — for ordering, quiet is quiet, and
+        /// recency should decide (a CLI session ended 23h ago belongs above a Desktop conversation
+        /// idle for 80 days, not pinned to the bottom below it).
         public var rank: Int {
             switch self {
             case .needsApproval: return 0; case .awaitingYou: return 1
-            case .working: return 2; case .idle: return 3; case .ended: return 4; case .unknown: return 5
+            case .working: return 2; case .idle, .ended, .unknown: return 3
             }
         }
         public var needsUser: Bool { self == .needsApproval || self == .awaitingYou }
@@ -668,7 +672,9 @@ public enum SessionAggregator {
     // MARK: Ordering
 
     static func order(_ a: UnifiedSession, _ b: UnifiedSession) -> Bool {
-        if a.attention != b.attention { return a.attention.rank < b.attention.rank }
+        // Branch on rank, not attention inequality — quiet states share a rank, and two different
+        // quiet attentions must fall through to the project/recency tiebreaks, not early-return.
+        if a.attention.rank != b.attention.rank { return a.attention.rank < b.attention.rank }
         let pa = a.projectName, pb = b.projectName
         if pa != pb { return pa.localizedCaseInsensitiveCompare(pb) == .orderedAscending }
         return (a.updatedAt ?? .distantPast) > (b.updatedAt ?? .distantPast)

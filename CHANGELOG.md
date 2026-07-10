@@ -2,6 +2,15 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.8] — 2026-07-10
+
+### Fixed
+- **A recently-ended CLI session no longer sinks below weeks-idle rows.** Quiet states (idle /
+  ended / unknown) now share one sort rank, so among quiet sessions recency decides — a session
+  whose terminal closed 23 hours ago sorts above a Desktop conversation idle for 80 days instead
+  of being pinned to the very bottom. "Ended" remains a display distinction (label, resume chip),
+  just not a sort penalty. Needs-approval / your-turn / working still outrank everything quiet.
+
 ## [0.5.7] — 2026-07-10
 
 ### Fixed
