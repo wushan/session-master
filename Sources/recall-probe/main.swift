@@ -28,6 +28,32 @@ func liveTargets() -> [(LiveClaudeSession, TerminalInfo)] {
 }
 
 switch cmd {
+case "search":
+    // Probe the full ended-session search pipeline the dashboard uses.
+    let q = args.count > 1 ? args[1] : ""
+    print("== ClaudeEndedCollector.matching(q: \(q)) ==")
+    let raw = ClaudeEndedCollector.matching(query: q, excluding: [])
+    for e in raw {
+        print("  sid=\(e.sessionId.prefix(8)) custom=\(e.history.customTitle ?? "—") ai=\(e.history.aiTitle ?? "—") cwd=\(e.history.cwd ?? "—")")
+    }
+    print("== SessionAggregator.searchEndedSessions ==")
+    for u in SessionAggregator.searchEndedSessions(query: q, excluding: []) {
+        print("  id=\(u.id.prefix(8)) displayTitle=\(u.displayTitle) subtitle=\(u.subtitle ?? "—")")
+    }
+    print("== dashboard 全路徑模擬 (store.sessions → searchOlder(exclude:loaded) → matches 重濾) ==")
+    let loaded = SessionAggregator.all()
+    let exclude = Set(loaded.map(\.id))
+    func matches(_ s: UnifiedSession) -> Bool {
+        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
+            .compactMap { $0 }.joined(separator: " ")
+        return hay.localizedCaseInsensitiveContains(q)
+    }
+    let base = loaded.filter(matches)
+    for u in base { print("  [loaded] \(u.id.prefix(8)) \(u.displayTitle) src=\(u.source)") }
+    let older = SessionAggregator.searchEndedSessions(query: q, excluding: exclude)
+    for u in older {
+        print("  [older]  \(u.id.prefix(8)) \(u.displayTitle) matchesUI=\(matches(u)) dedupDropped=\(exclude.contains(u.id))")
+    }
 case "list":
     let rows = liveTargets().sorted { $0.0.pid < $1.0.pid }
     print("PID    STATUS   TTY          TERMINAL   TMUX  CWD")
