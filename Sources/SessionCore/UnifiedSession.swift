@@ -403,9 +403,10 @@ public enum SessionAggregator {
             guard let cwd = d.cwd ?? d.worktreePath, !cwd.isEmpty else { continue }
             // A terminal resume appends to the transcript but never touches the Desktop store's
             // lastActivityAt, leaving it frozen (the session looks days old). Prefer the
-            // transcript's mtime when newer so a recently-used session sorts correctly.
+            // transcript's CONTENT time when newer — not its mtime, which Desktop batch-touches
+            // on relaunch/sync, faking "21m ago" on a weeks-idle session.
             let updated = [d.lastActivityAt,
-                           ClaudeHistoryEnricher.transcriptMtime(sessionId: cli, cwd: cwd)]
+                           ClaudeHistoryEnricher.transcriptLastActivity(sessionId: cli, cwd: cwd)]
                 .compactMap { $0 }.max()
             out.append(UnifiedSession(
                 id: cli, source: .claudeDesktop, pid: nil, cwd: cwd, name: nil, title: d.title,

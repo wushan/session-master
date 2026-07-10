@@ -13,6 +13,10 @@ public struct ClaudeHistory: Sendable {
     public let contextTokens: Int?   // raw token count, for recomputing % when the true window
                                      // (1M) is only knowable from outside the transcript
     public let cwd: String?          // recovered from the transcript (for ended-session resume)
+    /// When the conversation last actually progressed — the newest record `timestamp` in the tail.
+    /// The file's mtime lies: Claude Desktop batch-rewrites old transcripts (relaunch/sync), which
+    /// bumps mtime with zero new content and would fake "active 21m ago" on a weeks-old session.
+    public let lastTimestamp: Date?
 }
 
 /// Claude CLI sessions only record pid/cwd/name/status in `~/.claude/sessions`. The
@@ -69,7 +73,11 @@ public enum ClaudeHistoryEnricher {
             var model: String?, branch: String?, aiTitle: String?, lastPrompt: String?, cwd: String?
             var customTitle: String?
             var prNumber: Int?, prURL: String?, ctxTokens: Int?
+            var lastTs: Date?
             for d in JSONLReader.tailObjects(url).reversed() {
+                // Newest-first iteration: the first record carrying a timestamp is the latest
+                // (marker lines like ai-title/custom-title have none — keep looking past those).
+                if lastTs == nil, let t = d["timestamp"] as? String { lastTs = parseISO(t) }
                 let msg = d["message"] as? [String: Any]
                 // Only accept real model ids; Claude writes "<synthetic>" system turns (often the
                 // very last record) that must not be shown as the model. Match by exclusion, not
@@ -106,8 +114,24 @@ public enum ClaudeHistoryEnricher {
             return ClaudeHistory(model: model, branch: branch, aiTitle: aiTitle,
                                  customTitle: customTitle, lastPrompt: lastPrompt,
                                  prNumber: prNumber, prURL: prURL, contextPercent: pct,
-                                 contextTokens: ctxTokens, cwd: cwd)
+                                 contextTokens: ctxTokens, cwd: cwd, lastTimestamp: lastTs)
         }
+    }
+
+    // Transcript timestamps are ISO8601 with fractional seconds ("2026-05-16T13:49:00.699Z"),
+    // occasionally without. Both formatters are thread-safe.
+    private static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static let isoPlain = ISO8601DateFormatter()
+    static func parseISO(_ s: String) -> Date? { isoFrac.date(from: s) ?? isoPlain.date(from: s) }
+
+    /// When the conversation last really progressed: the transcript's newest record timestamp,
+    /// falling back to file mtime only when the tail carries no timestamps. Use this (not mtime)
+    /// to order sessions — Desktop's batch touches make mtime fake recency on weeks-old sessions.
+    public static func transcriptLastActivity(sessionId: String, cwd: String) -> Date? {
+        guard let url = transcriptURL(sessionId: sessionId, cwd: cwd) else { return nil }
+        return parse(url)?.lastTimestamp ?? transcriptMtime(sessionId: sessionId, cwd: cwd)
     }
 
     /// Context% against the window the *merged* model implies. CLI transcripts never carry the

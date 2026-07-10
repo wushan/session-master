@@ -19,18 +19,22 @@ public enum ClaudeEndedCollector {
     // it, and `matching` searches across all of it — so one scan serves both without conflicting cutoffs.
     private static let scanWindow: TimeInterval = 14 * 86400
 
-    /// Transcripts modified within `within` whose session isn't currently live — newest first,
-    /// capped. Live-exclusion is applied fresh on every call; only the directory walk is throttled.
+    /// Transcripts whose conversation progressed within `within` and whose session isn't currently
+    /// live — newest first, capped. The mtime cutoff is only a cheap pre-filter; the real window
+    /// check uses the transcript's newest CONTENT timestamp, because Claude Desktop batch-touches
+    /// old transcripts (relaunch/sync) and a bare mtime window would resurrect weeks-dead sessions
+    /// as "ended 20m ago". Live-exclusion is applied fresh on every call.
     public static func recent(within: TimeInterval = 24 * 3600,
                               excluding live: Set<String>, limit: Int = 20) -> [EndedClaudeSession] {
         let cutoff = Date().addingTimeInterval(-within)
         return candidates()
             .filter { $0.m >= cutoff && !live.contains($0.sid) }
             .prefix(limit)
-            .compactMap { c in
-                ClaudeHistoryEnricher.parse(c.url).map {           // parse is itself mtime-cached
-                    EndedClaudeSession(sessionId: c.sid, updatedAt: c.m, history: $0)
-                }
+            .compactMap { c -> EndedClaudeSession? in
+                guard let h = ClaudeHistoryEnricher.parse(c.url) else { return nil }  // mtime-cached
+                let updated = h.lastTimestamp ?? c.m
+                guard updated >= cutoff else { return nil }
+                return EndedClaudeSession(sessionId: c.sid, updatedAt: updated, history: h)
             }
     }
 
@@ -52,7 +56,8 @@ public enum ClaudeEndedCollector {
             let hay = [CustomTitles.get(c.sid), h.customTitle, h.aiTitle, h.lastPrompt, h.branch, h.cwd]
                 .compactMap { $0 }.joined(separator: "\u{1}").lowercased()
             if hay.contains(q) {
-                out.append(EndedClaudeSession(sessionId: c.sid, updatedAt: c.m, history: h))
+                out.append(EndedClaudeSession(sessionId: c.sid, updatedAt: h.lastTimestamp ?? c.m,
+                                              history: h))
                 if out.count >= limit { break }
             }
         }
