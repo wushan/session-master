@@ -45,7 +45,7 @@ case "search":
     let exclude = Set(loaded.map(\.id))
     func matches(_ s: UnifiedSession) -> Bool {
         let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle,
-                   s.rich.prNumber.map { "PR#\($0)" }]
+                   s.rich.searchText, s.rich.prNumber.map { "PR#\($0)" }]
             .compactMap { $0 }.joined(separator: " ")
         return hay.localizedCaseInsensitiveContains(q)
     }
@@ -95,6 +95,17 @@ case "recall":
     case .notFound:               print("❌ could not locate a window/terminal to recall")
     case .failed(let m):          print("❌ \(m)")
     }
+
+case "deepsearch":
+    // searchEndedSessions ONLY (no snapshot) — isolates deep-scan cost from git/gh subprocesses.
+    let q = args.count > 1 ? args[1] : ""
+    let t0 = Date()
+    let r = SessionAggregator.searchEndedSessions(query: q, excluding: [])
+    print("\(r.count) hits in \(String(format: "%.2f", -t0.timeIntervalSinceNow))s")
+    for u in r { print("  \(u.id.prefix(8)) [\(u.source.rawValue)] \(u.displayTitle)") }
+    let t1 = Date()
+    _ = SessionAggregator.searchEndedSessions(query: q, excluding: [])
+    print("warm re-query: \(String(format: "%.2f", -t1.timeIntervalSinceNow))s")
 
 case "ages":
     // Verify session ordering timestamps: content-based lastActivity vs what the UI shows.

@@ -17,7 +17,10 @@ public enum ClaudeEndedCollector {
     private static let rescan: TimeInterval = 30
     // The directory walk covers this whole span (cached); `recent` narrows to its own `within` from
     // it, and `matching` searches across all of it — so one scan serves both without conflicting cutoffs.
-    private static let scanWindow: TimeInterval = 14 * 86400
+    // 90 days: "that conversation from last month" is exactly what deep search is for — a
+    // fortnight matched nobody's memory of when they closed a session. The transcript store is
+    // small (≈100 files), so the wider walk costs nothing meaningful.
+    private static let scanWindow: TimeInterval = 90 * 86400
 
     /// Transcripts whose conversation progressed within `within` and whose session isn't currently
     /// live — newest first, capped. The mtime cutoff is only a cheap pre-filter; the real window
@@ -48,7 +51,7 @@ public enum ClaudeEndedCollector {
         var scanned = 0
         for c in candidates() where !excluding.contains(c.sid) {
             scanned += 1
-            if scanned > 200 { break }
+            if scanned > 1000 { break }
             guard let h = ClaudeHistoryEnricher.parse(c.url) else { continue }
             // Include the SessionMaster rename (CustomTitles) — a session renamed in the app has its
             // name in UserDefaults, not the transcript, so search must look there too or the name
