@@ -53,7 +53,9 @@ public enum ClaudeEndedCollector {
             // Include the SessionMaster rename (CustomTitles) — a session renamed in the app has its
             // name in UserDefaults, not the transcript, so search must look there too or the name
             // you gave it can't find it.
-            let hay = [CustomTitles.get(c.sid), h.customTitle, h.aiTitle, h.lastPrompt, h.branch, h.cwd]
+            // "PR#758" so "#758", "758" and "pr#758" all hit the linked PR by substring.
+            let hay = [CustomTitles.get(c.sid), h.customTitle, h.aiTitle, h.lastPrompt, h.branch, h.cwd,
+                       h.prNumber.map { "PR#\($0)" }]
                 .compactMap { $0 }.joined(separator: "\u{1}").lowercased()
             if hay.contains(q) {
                 out.append(EndedClaudeSession(sessionId: c.sid, updatedAt: h.lastTimestamp ?? c.m,

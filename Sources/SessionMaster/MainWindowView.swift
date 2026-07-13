@@ -280,7 +280,9 @@ struct MainWindowView: View {
         // subtitle (last prompt / AI title) included: searchOlder finds out-of-window sessions BY
         // last prompt — omitting it here would drop exactly what that scan matched (and disagree
         // with the popover's haystack).
-        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
+        // "PR#758" so "#758", "758" and "pr#758" all hit the linked PR by substring.
+        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle,
+                   s.rich.prNumber.map { "PR#\($0)" }]
             .compactMap { $0 }.joined(separator: " ")
         return hay.localizedCaseInsensitiveContains(search)
     }

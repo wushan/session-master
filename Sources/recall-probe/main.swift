@@ -44,7 +44,8 @@ case "search":
     let loaded = SessionAggregator.all()
     let exclude = Set(loaded.map(\.id))
     func matches(_ s: UnifiedSession) -> Bool {
-        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle]
+        let hay = [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle,
+                   s.rich.prNumber.map { "PR#\($0)" }]
             .compactMap { $0 }.joined(separator: " ")
         return hay.localizedCaseInsensitiveContains(q)
     }

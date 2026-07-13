@@ -409,14 +409,19 @@ public enum SessionAggregator {
             // lastActivityAt, leaving it frozen (the session looks days old). Prefer the
             // transcript's CONTENT time when newer — not its mtime, which Desktop batch-touches
             // on relaunch/sync, faking "21m ago" on a weeks-idle session.
+            let h = ClaudeHistoryEnricher.enrich(sessionId: cli, cwd: cwd)
             let updated = [d.lastActivityAt,
-                           ClaudeHistoryEnricher.transcriptLastActivity(sessionId: cli, cwd: cwd)]
+                           h?.lastTimestamp ?? ClaudeHistoryEnricher.transcriptMtime(sessionId: cli, cwd: cwd)]
                 .compactMap { $0 }.max()
-            out.append(UnifiedSession(
+            var u = UnifiedSession(
                 id: cli, source: .claudeDesktop, pid: nil, cwd: cwd, name: nil, title: d.title,
                 model: d.model, effort: d.effort, branch: d.branch, worktreeName: d.worktreeName,
                 originator: nil, status: .idle, waitingFor: nil, terminal: .dead,
-                updatedAt: updated, scheduledTaskId: d.scheduledTaskId))
+                updatedAt: updated, scheduledTaskId: d.scheduledTaskId)
+            // The transcript is already parsed (cached) for `updated` — surface its PR link so
+            // searching "#758" finds the Desktop conversation that shipped that PR.
+            u.rich.prNumber = h?.prNumber; u.rich.prURL = h?.prURL
+            out.append(u)
         }
         return out
     }
