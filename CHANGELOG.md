@@ -2,6 +2,23 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.6.0] — 2026-07-13
+
+### Added
+- **Deep search now reads Codex conversations, and reaches back 90 days.** A Codex session was
+  previously findable only by its title/folder/branch — now the search also matches what was
+  actually *said*: the opening task statement (even when it sits 100KB into the rollout, behind
+  the injected preamble) and the most recent prompts. Codex rows also gained a subtitle showing
+  the last prompt, like Claude rows.
+- **Scan window: 14 → 90 days** for both Claude and Codex deep search, and the scan cap now spans
+  the whole window — hourly automation rollouts alone used to exhaust the old 200-file cap within
+  ~5 days, silently hiding everything older. First search after launch pays a one-time ~4s sweep;
+  after that re-queries are instant (mtime-cached).
+
+### Fixed
+- Automation-run preambles (raw epoch timestamps) no longer false-match numeric queries like PR
+  numbers.
+
 ## [0.5.9] — 2026-07-13
 
 ### Added
