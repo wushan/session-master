@@ -2,6 +2,14 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [0.5.9] — 2026-07-13
+
+### Added
+- **Search by PR number.** Typing `#758`, `758`, or `pr#758` finds the session linked to that
+  pull request — in the popover, the dashboard, and the deep scan over older/archived transcripts.
+- Desktop conversations now carry their PR link too (it lived only in the transcript before), so
+  a saved Desktop row is findable by PR number and can pair with its Codex companion by PR.
+
 ## [0.5.8] — 2026-07-10
 
 ### Fixed
