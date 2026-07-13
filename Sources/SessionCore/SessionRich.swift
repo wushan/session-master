@@ -12,6 +12,8 @@ public struct SessionRich: Sendable {
     public var prReviewDecision: String?
     public var contextPercent: Int?    // % of the model context window used
     public var customTitle: String?    // user-set name (overrides the auto title)
+    public var searchText: String?     // extra searchable text never displayed (Codex: the tail's
+                                       // user messages, so search reaches conversation content)
 
     public init() {}
 }

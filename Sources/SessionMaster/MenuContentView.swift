@@ -52,7 +52,7 @@ struct MenuContentView: View {
     private func matchesSearch(_ s: UnifiedSession) -> Bool {
         // "PR#758" so "#758", "758" and "pr#758" all hit the linked PR by substring.
         [s.displayTitle, s.projectName, s.branch, s.model, s.cwd, s.subtitle,
-         s.rich.prNumber.map { "PR#\($0)" }]
+         s.rich.searchText, s.rich.prNumber.map { "PR#\($0)" }]
             .compactMap { $0 }.joined(separator: " ").localizedCaseInsensitiveContains(search)
     }
     private func titleHit(_ s: UnifiedSession) -> Bool {

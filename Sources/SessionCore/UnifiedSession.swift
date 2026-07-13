@@ -310,12 +310,17 @@ public enum SessionAggregator {
         var scanned = 0
         for (url, m) in CodexSessionCollector.candidates() {
             scanned += 1
-            if scanned > 200 || out.count >= limit { break }
+            // The cap must span the whole scan window: hourly automation rollouts dominate the
+            // newest-first list (500+ per fortnight), and a small cap would exhaust itself on
+            // them before ever reaching a weeks-old user conversation. Parses are mtime-cached,
+            // so only the first search after launch pays for the sweep.
+            if scanned > 3000 || out.count >= limit { break }
             guard let c = CodexSessionCollector.parse(url, mtime: m, titles: titles),
                   !excluding.contains(c.id),
                   c.threadSource == nil || c.threadSource == "user",
                   !SessionTree.claudeDriven.contains(c.originator ?? "") else { continue }
-            let hay = [c.title, c.cwd, c.branch].compactMap { $0 }.joined(separator: "\u{1}").lowercased()
+            let hay = [c.title, c.cwd, c.branch, c.userText]
+                .compactMap { $0 }.joined(separator: "\u{1}").lowercased()
             if hay.contains(q) { out.append(unified(from: c, live: nil)) }
         }
         return out
@@ -611,7 +616,7 @@ public enum SessionAggregator {
             && !SessionTree.claudeDriven.contains(c.originator ?? "")
             && c.threadSource != "automation"
             && Date().timeIntervalSince(c.mtime) > codexEndedAfter
-        return UnifiedSession(
+        var u = UnifiedSession(
             id: c.id,
             source: isDesktop ? .codexDesktop : .codexCLI,
             pid: live?.pid, cwd: c.cwd, name: nil, title: c.title,
@@ -621,6 +626,11 @@ public enum SessionAggregator {
             waitingFor: nil, terminal: live?.terminal ?? .dead, updatedAt: c.mtime,
             isAutomationRun: c.threadSource == "automation",
             isEnded: ended)
+        u.rich.lastPrompt = c.lastPrompt
+        // The UI re-filters search results against what IT can see; expose the matched tail text
+        // or a content hit found by codexMatching would be dropped right after being found.
+        u.rich.searchText = c.userText
+        return u
     }
 
     /// A new-format Codex sub-agent (its rollout carries parent_thread_id) as a child row.

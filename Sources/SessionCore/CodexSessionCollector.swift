@@ -11,6 +11,9 @@ public struct CodexSession: Sendable, Identifiable {
     public let model: String?
     public let effort: String?
     public var title: String?           // applied outside the rollout cache (renames independently)
+    public let lastPrompt: String?      // newest real user message (display)
+    public let userText: String?        // user messages from the tail + the opening ones (search
+                                        // only — a query can hit conversation content, not just titles)
     public let mtime: Date
     public let url: URL                 // rollout file (for sub-agent scanning)
     public let threadSource: String?    // "user" | "automation" | "subagent" | nil(companion)
@@ -41,8 +44,10 @@ public enum CodexSessionCollector {
     nonisolated(unsafe) private static var scanCache: (at: Date, items: [(URL, Date)])?
     private static let rescan: TimeInterval = 15
     /// How far back the directory walk looks (same idea as ClaudeEndedCollector.scanWindow) —
-    /// `recent` narrows from it, and search can span all of it.
-    static let scanWindow: TimeInterval = 14 * 86400
+    /// `recent` narrows from it, and search can span all of it. 90 days so deep search reaches
+    /// "that conversation from last month"; the walk enumerates the whole store either way, the
+    /// window only bounds how many candidates search may parse (parses are mtime-cached).
+    static let scanWindow: TimeInterval = 90 * 86400
 
     /// Recently-modified rollouts over `scanWindow`, newest first, cached for `rescan` seconds —
     /// the store holds every rollout ever written (600+ and growing), so walking + stat-ing it
@@ -98,23 +103,59 @@ public enum CodexSessionCollector {
     }
 
     static func parseUncached(_ url: URL, mtime: Date) -> CodexSession? {
-        guard let first = JSONLReader.firstObject(url),
+        // session_meta is a small first line; the default 1MB window would make a cold search
+        // sweep of the ~1000-rollout store read a gigabyte just for metadata.
+        guard let first = JSONLReader.firstObject(url, maxBytes: 64 * 1024),
               first["type"] as? String == "session_meta",
               let p = first["payload"] as? [String: Any],
               let id = p["id"] as? String,
               let cwd = p["cwd"] as? String else { return nil }
         let git = p["git"] as? [String: Any]
+        // A real user message — not the harness-injected AGENTS.md / environment preamble, which
+        // is in every rollout and would make every session match every query about the repo docs.
+        func userMessage(_ d: [String: Any]) -> String? {
+            guard let mp = d["payload"] as? [String: Any],
+                  mp["type"] as? String == "user_message",
+                  let t = mp["message"] as? String, !t.isEmpty,
+                  !t.hasPrefix("# AGENTS"), !t.hasPrefix("<environment_context"),
+                  !t.hasPrefix("<user_instructions"),
+                  // Automation-run preambles carry raw epoch timestamps that make any short
+                  // numeric query (a PR number…) false-match; the run stays findable by title.
+                  !t.hasPrefix("Automation:") else { return nil }
+            return t
+        }
         var model: String?
         var effort: String?
-        for d in JSONLReader.tailObjects(url).reversed() where d["type"] as? String == "turn_context" {
-            let tp = d["payload"] as? [String: Any]
-            model = tp?["model"] as? String
-            effort = tp?["effort"] as? String
-            break
+        var tailPrompts: [String] = []   // newest first
+        var chars = 0
+        for d in JSONLReader.tailObjects(url).reversed() {
+            if model == nil, d["type"] as? String == "turn_context" {
+                let tp = d["payload"] as? [String: Any]
+                model = tp?["model"] as? String
+                effort = tp?["effort"] as? String
+            }
+            if chars < 800, let t = userMessage(d) { tailPrompts.append(t); chars += t.count }
         }
+        // A long rollout's tail is usually all assistant/tool output — the user messages that
+        // say what the conversation is ABOUT are at the head (the opening task statement, often
+        // 100KB+ in because of the injected preamble). Only read it when it isn't the same
+        // window the tail already covered.
+        var headPrompts: [String] = []   // oldest first
+        chars = 0
+        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        if bytes > 64 * 1024 {
+            for d in JSONLReader.headObjects(url, containing: "\"user_message\"", maxBytes: 256 * 1024) {
+                if chars >= 1200 { break }
+                if let t = userMessage(d) { headPrompts.append(t); chars += t.count }
+            }
+        }
+        let searchable = tailPrompts + headPrompts.reversed()
         return CodexSession(id: id, cwd: cwd, branch: git?["branch"] as? String,
                             originator: p["originator"] as? String,
-                            model: model, effort: effort, title: nil, mtime: mtime, url: url,
+                            model: model, effort: effort, title: nil,
+                            lastPrompt: (tailPrompts.first ?? headPrompts.last).map { String($0.prefix(300)) },
+                            userText: searchable.isEmpty ? nil : String(searchable.joined(separator: "\n").prefix(2000)),
+                            mtime: mtime, url: url,
                             threadSource: p["thread_source"] as? String,
                             parentThreadId: p["parent_thread_id"] as? String,
                             subagentRole: (p["source"] as? [String: Any])?["subagent"] as? String)
