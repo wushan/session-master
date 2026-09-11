@@ -59,8 +59,9 @@ final class SessionStore {
         if refreshing, let started = refreshStartedAt, Date().timeIntervalSince(started) < 20 { return }
         refreshing = true
         refreshStartedAt = Date()
+        let includeGitStatus = hasLoaded
         Task.detached(priority: .utility) {
-            let snap = SessionAggregator.snapshot()
+            let snap = SessionAggregator.snapshot(includeGitStatus: includeGitStatus)
             let jobs = ScheduleAggregator.all()
             let trusted = Recaller.accessibilityTrusted()
             await MainActor.run { [weak self] in

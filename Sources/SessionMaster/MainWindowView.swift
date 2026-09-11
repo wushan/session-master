@@ -6,7 +6,7 @@ enum DashboardTab: String, CaseIterable {
     case sessions = "Sessions", automations = "Automations", config = "Settings", about = "About"
     var icon: String {
         switch self {
-        case .sessions:    return "list.bullet.rectangle"
+        case .sessions:    return "square.grid.2x2"
         case .automations: return "clock.arrow.2.circlepath"
         case .config:      return "gearshape"
         case .about:       return "info.circle"
@@ -34,6 +34,7 @@ struct MainWindowView: View {
         return .idle
     }
 
+    @AppStorage("dashboardProjectGrid") private var projectGrid = true
     @State private var sourceFilter: SourceFilter = .all
     @State private var sortMode: SortMode = .recent
     @State private var search = ""
@@ -64,7 +65,10 @@ struct MainWindowView: View {
             if !store.accessibilityTrusted { AccessibilityBanner(store: store) }
             Group {
                 switch store.selectedTab {
-                case .sessions:    sessionsList
+                case .sessions:
+                    if projectGrid {
+                        ProjectDashboardView(store: store, search: search)
+                    } else { sessionsList }
                 case .automations: automationsList
                 case .config:      ConfigView(store: store)
                 case .about:       AboutView()
@@ -90,8 +94,8 @@ struct MainWindowView: View {
         // so closing-then-reopening (or a stray disappear) can't strand the app without a Dock icon.
         .onAppear { NSApp.setActivationPolicy(.regular) }
         // Search reaches older (out-of-window) closed sessions: debounce keystrokes, then scan.
-        .task(id: search) {
-            guard search.count >= 2 else { olderResults = []; return }
+        .task(id: "\(projectGrid):\(search)") {
+            guard !projectGrid, search.count >= 2 else { olderResults = []; return }
             try? await Task.sleep(nanoseconds: 300_000_000)
             if Task.isCancelled { return }
             let r = await store.searchOlder(search)
@@ -116,18 +120,16 @@ struct MainWindowView: View {
         window.collectionBehavior.insert(.moveToActiveSpace)
     }
 
-    /// Shrink a legacy oversized window down to the new narrow default — once per install
-    /// (persisted in UserDefaults: the @State flag resets on every window recreation, which would
-    /// re-shrink a window the user deliberately widened past 520pt on each reopen).
     private func applyInitialSize() {
         guard !didSetInitialSize, let window else { return }
         didSetInitialSize = true
-        let migrationKey = "didShrinkLegacyWindow"
+        let migrationKey = "didExpandProjectGridWindow"
         if !UserDefaults.standard.bool(forKey: migrationKey) {
             UserDefaults.standard.set(true, forKey: migrationKey)
             var f = window.frame
-            if f.size.width > 520 {
-                f.size.width = 430
+            if f.size.width < 1000 {
+                f.size.width = min(1100, window.screen?.visibleFrame.width ?? 1100)
+                f.size.height = min(780, window.screen?.visibleFrame.height ?? 780)
                 window.setFrame(f, display: true, animate: false)
             }
         }
@@ -178,8 +180,11 @@ struct MainWindowView: View {
         // so the input grows to the full width — easier to read/edit a long query.
         HStack(spacing: 8) {
             if !searchFocused {
-                sourceFilterControl
-                sortControl
+                Picker("Layout", selection: $projectGrid) {
+                    Image(systemName: "square.grid.2x2").tag(true)
+                    Image(systemName: "list.bullet").tag(false)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 76).help("Project grid or session list")
+                if !projectGrid { sourceFilterControl; sortControl }
             }
             searchField
             if !searchFocused {
@@ -189,6 +194,14 @@ struct MainWindowView: View {
                     Image(systemName: "arrow.clockwise").font(.system(size: 13))
                         .foregroundStyle(.secondary).frame(width: 22, height: 22).contentShape(Rectangle())
                 }.buttonStyle(.plain).pointerCursor().help("Refresh now — re-scan all sessions")
+                Button { restartApp() } label: {
+                    Image(systemName: "arrow.clockwise.circle").font(.system(size: 13))
+                        .foregroundStyle(.secondary).frame(width: 22, height: 22).contentShape(Rectangle())
+                }.buttonStyle(.plain).pointerCursor().help("Restart the app")
+                Button { quitApp() } label: {
+                    Image(systemName: "power").font(.system(size: 13))
+                        .foregroundStyle(.secondary).frame(width: 22, height: 22).contentShape(Rectangle())
+                }.buttonStyle(.plain).pointerCursor().help("Quit the app")
             }
         }
         .padding(.horizontal, 8).padding(.vertical, 10)
