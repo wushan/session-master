@@ -202,6 +202,16 @@ struct MenuContentView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
+            Button { restartApp() } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless).pointerCursor().help("Restart the app")
+            Button { quitApp() } label: {
+                Image(systemName: "power")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless).pointerCursor().help("Quit the app")
             Button { store.toggleLaunchAtLogin() } label: {
                 Image(systemName: store.launchAtLogin ? "bolt.fill" : "bolt")
                     .foregroundStyle(store.launchAtLogin ? .yellow : .secondary)

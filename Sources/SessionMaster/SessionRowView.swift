@@ -9,6 +9,7 @@ import SessionCore
 struct SessionRowView: View {
     let session: UnifiedSession
     var children: [UnifiedSession] = []
+    var titleLineLimit = 1
     var isOpen: Bool = false
     var onToggle: () -> Void = {}
     /// >1 == this row stands for N collapsed routine runs; shows an "×N runs" toggle chip.
@@ -109,7 +110,8 @@ struct SessionRowView: View {
                 }.buttonStyle(.plain).pointerCursor().help("Cancel (Esc)")
             } else {
                 Text(session.displayTitle)
-                    .font(.system(size: 15.5, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                    .font(.system(size: 15.5, weight: .semibold)).lineLimit(titleLineLimit).truncationMode(.tail)
+                    .help(session.displayTitle)
                 // Hover the row → an edit affordance appears right on the title (WordPress-block
                 // style); click it to rename inline. A renamed session keeps a quiet pencil at rest.
                 if hovering {
@@ -248,6 +250,7 @@ struct SessionRowView: View {
                 }
                 .buttonStyle(.plain).foregroundStyle(Color(nsColor: .windowBackgroundColor))
                 .background(Color.sage, in: RoundedRectangle(cornerRadius: 8)).pointerCursor()
+                .help(primaryVerbHelp)
             }
             ghostButton("chevron.left.forwardslash.chevron.right", "Editor", onVSCode)
             if let onReveal { ghostButton("folder", "Finder", onReveal) }
@@ -338,8 +341,12 @@ struct SessionRowView: View {
         Button("Rename…") { onBeginEdit() }
         if session.rich.customTitle != nil { Button("Reset to default title") { onRename?(nil) } }
         Divider()
-        if session.canRecall { Button("Recall window") { onRecall() } }
-        if session.canResume { Button("Resume in Terminal") { onResume?() } }
+        if session.canRecall {
+            Button("Recall window (focus active session)") { onRecall() }
+        }
+        if session.canResume {
+            Button(session.source.isClaude ? "Resume in Claude Desktop" : "Resume in Terminal") { onResume?() }
+        }
         Button("Open in editor") { onVSCode() }
         if let onReveal { Button("Reveal in Finder") { onReveal() } }
     }
@@ -353,6 +360,17 @@ struct SessionRowView: View {
         case .recall: return "Recall"
         case .resume: return session.isEnded || session.source.isClaude
             ? "Resume in \(AppSettings.shared.resumeTerminal.rawValue)" : "Resume"
+        case .none: return ""
+        }
+    }
+    private var primaryVerbHelp: String {
+        switch primaryAction {
+        case .recall:
+            return "Recall: bring the existing live window (or terminal) to the front."
+        case .resume:
+            return session.isEnded || session.source.isClaude
+                ? "Resume: open this closed conversation in \(AppSettings.shared.resumeTerminal.rawValue)."
+                : "Resume: reopen this session as a new terminal thread."
         case .none: return ""
         }
     }

@@ -226,7 +226,7 @@ public enum SessionAggregator {
     public static func all() -> [UnifiedSession] { snapshot().sessions }
 
     /// Top-level sessions plus a map of parent id → sub-agent children (Codex sub-agents).
-    public static func snapshot() -> (sessions: [UnifiedSession], subagents: [String: [UnifiedSession]]) {
+    public static func snapshot(includeGitStatus: Bool = true) -> (sessions: [UnifiedSession], subagents: [String: [UnifiedSession]]) {
         let claude = claudeSessions()
         let jsonLiveIds = Set(claude.map(\.id))
         // Live CLI sessions the live-state files miss (a terminal resume of a Desktop-origin
@@ -234,7 +234,12 @@ public enum SessionAggregator {
         let resumed = claudeResumeSessions(excluding: jsonLiveIds)
         let liveIds = jsonLiveIds.union(resumed.map(\.id))
         let desktop = desktopStandalone(excluding: liveIds)
-        let codexAll = CodexSessionCollector.recent()
+        // Keep the existing CLI window, but include desktop projects active in the last ten days.
+        let recentCodex = CodexSessionCollector.recent()
+        let recentCodexIds = Set(recentCodex.map(\.id))
+        let desktopCodex = CodexSessionCollector.recent(within: 10 * 86400, limit: .max)
+            .filter { $0.originator == "Codex Desktop" && !recentCodexIds.contains($0.id) }
+        let codexAll = recentCodex + desktopCodex
         var codexRaw = filterCodex(codexAll)
         let (codexLive, codexExtra) = correlateCodexProcesses(rollouts: codexRaw)
         codexRaw += codexExtra   // open TUIs whose rollout aged out of the window
@@ -275,6 +280,7 @@ public enum SessionAggregator {
         for i in sessions.indices {
             let s = sessions[i]
             sessions[i].rich.customTitle = CustomTitles.get(s.id)
+            guard includeGitStatus else { continue }
             let dir = GitWorktree.effectivePath(branch: s.branch, cwd: s.cwd, isWorktree: s.isWorktree)
             sessions[i].rich.git = GitStatusCollector.status(dir: dir)
             if let b = s.branch, !b.isEmpty, b != "HEAD", let pr = PRStatus.forBranch(b, repoDir: dir) {

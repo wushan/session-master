@@ -11,6 +11,7 @@ struct SessionNodeView: View {
     /// The single row currently editing its title — one at a time across the whole list.
     @Binding var editingId: String?
     let store: SessionStore
+    var titleLineLimit = 1
     var runCount = 0
     var onToggleRuns: (() -> Void)? = nil
 
@@ -18,6 +19,7 @@ struct SessionNodeView: View {
         SessionRowView(
             session: node.session,
             children: node.children,
+            titleLineLimit: titleLineLimit,
             isOpen: openId == node.id,
             onToggle: { openId = (openId == node.id) ? nil : node.id },
             runCount: runCount,

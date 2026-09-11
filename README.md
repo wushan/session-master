@@ -151,6 +151,19 @@ Click the ▦ menu-bar icon → **Dashboard**, and grant **Accessibility** when 
 (System Settings ▸ Privacy & Security ▸ Accessibility). Recall needs it to focus and move
 terminal windows — the in-app banner links you straight there.
 
+### Project grid (local fork)
+
+The dashboard opens as a responsive project grid, split into **Codex Desktop** and
+**Claude Desktop**. Projects include conversations updated within the last ten days,
+plus any older conversations that are still working or waiting for you. Each card
+shows all active tasks, then recent conversations up to five; **Show all** expands
+additional conversations within that window. Scheduled runs stay in Automations.
+
+Search filters projects and conversation titles/prompts. The grid/list control keeps
+the original all-source session list available, including CLI sessions. Project cards
+use folder paths to distinguish identically named projects. This is a local-file view;
+it does not retrieve cloud-only conversations or sessions on other computers.
+
 ### Develop
 
 ```bash

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import SessionCore
+import Foundation
 
 @main
 struct SessionMasterApp: App {
@@ -18,7 +19,7 @@ struct SessionMasterApp: App {
             MainWindowView(store: delegate.store)
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 430, height: 580)
+        .defaultSize(width: 1100, height: 780)
     }
 }
 
@@ -43,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 /// Menu-bar label: icon + a count of sessions needing attention / busy.
 struct MenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
     let store: SessionStore
     @State private var settings = AppSettings.shared
     var body: some View {
@@ -60,6 +62,7 @@ struct MenuBarLabel: View {
                 Text("\(store.workingCount)").foregroundStyle(.secondary)         // working
             }
         }
+        .task { openDashboard(openWindow) }
     }
 }
 
@@ -74,4 +77,17 @@ func openDashboard(_ openWindow: OpenWindowAction) {
         w.collectionBehavior.insert(.moveToActiveSpace)
         w.makeKeyAndOrderFront(nil)
     }
+}
+
+func restartApp() {
+    let launcher = Process()
+    launcher.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    launcher.arguments = ["-n", Bundle.main.bundlePath]
+    try? launcher.run()
+
+    NSApp.terminate(nil)
+}
+
+func quitApp() {
+    NSApp.terminate(nil)
 }
