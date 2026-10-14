@@ -90,6 +90,11 @@ final class SessionStore {
                     Notifier.fire(title: s.displayTitle, body: "Needs your approval",
                                   soundName: "Funk", withSound: settings.soundEnabled)
                 case .awaitingYou:
+                    if s.status == .input {
+                        Notifier.fire(title: s.displayTitle, body: "Needs your input",
+                                      soundName: "Funk", withSound: settings.soundEnabled)
+                        continue
+                    }
                     // Only a genuine turn-completion is news (it was working, blocked on an
                     // approval, or in an unrecognized-but-live status). idle/ended → awaitingYou
                     // flips happen when the user themself resumes a session or a saved row goes

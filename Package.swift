@@ -11,6 +11,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "SessionCore"),
+        .testTarget(name: "SessionCoreTests", dependencies: ["SessionCore"]),
         .executableTarget(name: "recall-probe", dependencies: ["SessionCore"]),
         .executableTarget(name: "SessionMaster", dependencies: ["SessionCore"]),
     ]

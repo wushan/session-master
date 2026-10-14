@@ -2,6 +2,17 @@
 
 All notable changes to SessionMaster. Format based on [Keep a Changelog](https://keepachangelog.com).
 
+## [Unreleased]
+
+### Fixed
+- Codex execution state follows start/complete/abort events instead of a 90-second file-age
+  estimate. A passive Desktop IPC observer distinguishes approval and user-input waits.
+- Claude Desktop SDK subprocesses without live-state files are recognized using their session
+  IDs; transcript completion and Desktop permission request/response logs supply state.
+- Running sessions show a native spinner in menu, dashboard and child rows. Completed,
+  interrupted, approval and input states have distinct accessible indicators; unavailable
+  runtime evidence stays unknown.
+
 ## [0.6.0] — 2026-07-13
 
 ### Added

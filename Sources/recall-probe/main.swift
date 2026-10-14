@@ -28,6 +28,17 @@ func liveTargets() -> [(LiveClaudeSession, TerminalInfo)] {
 }
 
 switch cmd {
+case "activity":
+    // Three snapshots exercise the same passive observer + refresh path as the app.
+    // Print only identity and state, not conversation/tool content.
+    for sample in 1...3 {
+        let rows = SessionAggregator.all()
+        print("Snapshot \(sample): \(rows.count) sessions")
+        for s in rows where s.attention == .working || s.attention.needsUser || s.source == .claudeDesktop {
+            print("\(s.id)\t\(s.source.rawValue)\t\(s.status.rawValue)\t\(s.statusLabel)")
+        }
+        if sample < 3 { Thread.sleep(forTimeInterval: 2) }
+    }
 case "search":
     // Probe the full ended-session search pipeline the dashboard uses.
     let q = args.count > 1 ? args[1] : ""

@@ -204,6 +204,7 @@ public enum ProcessCollector {
     /// `--resume=<id>`, `-r <id>`, and the id-less `--continue` / `-c` / bare `-r` picker (whose
     /// session id the aggregator resolves from the transcript the process appends to). A bare
     /// positional UUID is treated by the CLI as a prompt, not a resume, so it is not matched.
+    /// Desktop SDK subprocesses also identify themselves with `--session-id <id>`.
     public static func claudeResumeProcesses() -> [ResumeProcess] {
         var out: [ResumeProcess] = []
         for rec in snapshot() {
@@ -215,10 +216,10 @@ public enum ProcessCollector {
             var isTakeover = false
             var sid: String?
             for (i, a) in argv.enumerated().dropFirst() {
-                if a == "--resume" || a == "-r" || a == "--continue" || a == "-c" {
+                if a == "--resume" || a == "-r" || a == "--continue" || a == "-c" || a == "--session-id" {
                     isTakeover = true
                     if i + 1 < argv.count, isSessionUUID(argv[i + 1]) { sid = argv[i + 1] }
-                } else if a.hasPrefix("--resume=") || a.hasPrefix("-r=") {
+                } else if a.hasPrefix("--resume=") || a.hasPrefix("-r=") || a.hasPrefix("--session-id=") {
                     isTakeover = true
                     let v = String(a.split(separator: "=", maxSplits: 1).last ?? "")
                     if isSessionUUID(v) { sid = v }

@@ -1,8 +1,8 @@
 import Foundation
 
 /// A Codex session (CLI / Desktop / VSCode — all write here), from a rollout file under
-/// `~/.codex/sessions/YYYY/MM/DD/*.jsonl`. Liveness is inferred from file mtime since
-/// Codex, unlike Claude, records no live pid/status file.
+/// `~/.codex/sessions/YYYY/MM/DD/*.jsonl`. Execution comes from lifecycle events,
+/// supplemented by the Desktop's passive runtime observer for approval/input waits.
 public struct CodexSession: Sendable, Identifiable {
     public let id: String
     public let cwd: String
@@ -19,6 +19,7 @@ public struct CodexSession: Sendable, Identifiable {
     public let threadSource: String?    // "user" | "automation" | "subagent" | nil(companion)
     public let parentThreadId: String?  // subagent rollouts: the spawning rollout's id
     public let subagentRole: String?    // subagent rollouts: e.g. "review" (session_meta source.subagent)
+    public var activity: SessionActivity { SessionActivityCollector.replay.read(url) }
 }
 
 public enum CodexSessionCollector {
@@ -36,8 +37,12 @@ public enum CodexSessionCollector {
     public static func recent(within: TimeInterval = 24 * 3600, limit: Int = 60) -> [CodexSession] {
         let cutoff = Date().addingTimeInterval(-within)
         let titles = threadTitles()
-        return candidates().lazy.filter { $0.1 >= cutoff }.prefix(limit)
-            .compactMap { parse($0.0, mtime: $0.1, titles: titles) }
+        return candidates().lazy.compactMap { url, cachedTime -> CodexSession? in
+            // A cached directory walk must not also freeze known files' mtimes for 15 seconds.
+            let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? cachedTime
+            guard mtime >= cutoff else { return nil }
+            return parse(url, mtime: mtime, titles: titles)
+        }.prefix(limit).map { $0 }
     }
 
     private static let scanLock = NSLock()
@@ -96,7 +101,7 @@ public enum CodexSessionCollector {
         // turn_context only changes as the file grows (mtime stamp captures that). The title comes
         // from a *separate* index that can change without the rollout, so apply it OUTSIDE the cache
         // — otherwise a rename never shows until the rollout file happens to be rewritten.
-        guard var s = cache.value(path: url.path, stamp: mtime.timeIntervalSince1970 * 1_000_000,
+        guard var s = cache.value(path: url.path, stamp: fileStamp(url),
                                   compute: { parseUncached(url, mtime: mtime) }) else { return nil }
         s.title = titles[s.id]
         return s

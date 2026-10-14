@@ -38,7 +38,7 @@ struct SessionRowView: View {
     /// A real (non-empty) approval prompt is shown as the red waiting line — which also owns the
     /// space the subtitle would use. Both are keyed off this so an empty waitingFor can't hide both.
     private var hasWaitingLine: Bool {
-        session.attention == .needsApproval && (session.waitingFor?.isEmpty == false)
+        (session.attention == .needsApproval || session.status == .input) && (session.waitingFor?.isEmpty == false)
     }
 
     enum PrimaryAction { case recall, resume, none }
@@ -55,7 +55,7 @@ struct SessionRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if session.attention == .needsApproval, let w = session.waitingFor, !w.isEmpty {
+            if hasWaitingLine, let w = session.waitingFor {
                 waitingLine(w)
             }
             if isOpen { body_ }
@@ -93,8 +93,7 @@ struct SessionRowView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            Circle().fill(isDim ? Color.secondary.opacity(0.5) : c).frame(width: 8, height: 8)
-                .shadow(color: session.attention == .working ? c.opacity(0.9) : .clear, radius: 3)
+            SessionStatusIndicator(session: session)
             if isEditing {
                 TextField("Title", text: $draft)
                     .textFieldStyle(.roundedBorder).font(.system(size: 15))
@@ -162,7 +161,7 @@ struct SessionRowView: View {
             Image(systemName: "bolt.fill").font(.system(size: 9))
             Text(w).font(.system(size: 11, design: .monospaced)).lineLimit(1)
         }
-        .foregroundStyle(.red).padding(.leading, 14).padding(.trailing, 12).padding(.bottom, 9)
+        .foregroundStyle(session.attention.color).padding(.leading, 14).padding(.trailing, 12).padding(.bottom, 9)
     }
 
     // MARK: Expanded body
@@ -293,9 +292,7 @@ struct SessionRowView: View {
 
     private func childRow(_ k: UnifiedSession) -> some View {
         HStack(spacing: 8) {
-            Circle().fill(k.attention == .idle || k.attention == .ended
-                          ? Color.secondary.opacity(0.5) : k.attention.color)
-                .frame(width: 6, height: 6)
+            SessionStatusIndicator(session: k, size: 10)
             Image(systemName: childGlyph(k)).font(.system(size: 10)).foregroundStyle(.tertiary)
             Text("\(childType(k)) · \(k.displayTitle)").font(.system(size: 12))
                 .foregroundStyle(.secondary).lineLimit(1)
@@ -307,7 +304,7 @@ struct SessionRowView: View {
                 // Surface a working / your-turn child in words + color, not just a bare timestamp,
                 // so an active or waiting sub-agent reads without decoding the dot.
                 if k.attention == .working || k.attention == .awaitingYou {
-                    Text(k.attention.label.lowercased())
+                    Text(k.statusLabel.lowercased())
                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(k.attention.color)
                 }
                 if let age = relativeAge(k.updatedAt) {

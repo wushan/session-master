@@ -3,6 +3,7 @@ import Foundation
 /// Rich metadata for a Claude Desktop session, from
 /// `~/Library/Application Support/Claude/claude-code-sessions/**/local_*.json`.
 public struct DesktopSessionInfo: Sendable {
+    public let sessionId: String
     public let cliSessionId: String?
     public let cwd: String?
     public let worktreePath: String?
@@ -72,6 +73,7 @@ public enum ClaudeDesktopCollector {
               let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let cli = d["cliSessionId"] as? String else { return nil }
         return DesktopSessionInfo(
+            sessionId: d["sessionId"] as? String ?? url.deletingPathExtension().lastPathComponent,
             cliSessionId: cli,
             cwd: d["cwd"] as? String,
             worktreePath: d["worktreePath"] as? String,

@@ -171,6 +171,25 @@ the 2-second poll stays cheap. The only network call is the optional **PR status
 your `gh` CLI to query GitHub (cached ~5 min, fetched in the background) — it degrades to just
 the PR number (which the transcript already contains) when offline.
 
+Execution state comes from tool evidence, not a "modified in the last 90 seconds" timeout:
+- **Codex:** incrementally replay `task_started`, `task_complete`, and `turn_aborted` records.
+  A passive follower of the Desktop's local `~/.codex/ipc/ipc.sock` stream observes runtime
+  approval/input flags. It only initializes and subscribes; it never starts/resumes a thread,
+  takes ownership, or answers a request. A disconnected/incompatible stream shows unknown for
+  unfinished Desktop work. The observed IPC stream version is 11 (Codex build 155.0.8059.40).
+- **Claude Desktop:** use the owning SDK subprocess (including `--session-id`), transcript
+  messages/`stop_reason`, and request-ID-matched permission request/response entries in
+  `~/Library/Logs/Claude/main*.log`. Live `~/.claude/sessions` state takes precedence when
+  available. Historical requests from a previous subprocess are ignored. Verified format:
+  Desktop 2.37337.1 and bundled Claude Code 2.1.295, on 2026-10-14.
+- Working rows show a native spinner; approval, user-input, completion and interruption have
+  distinct accessible marks. Saved completed Claude conversations stay in the quiet shelf.
+  Missing evidence stays unknown; a process exit is never labeled successful completion.
+
+Run `swift test` for transition/regression fixtures, and `swift run recall-probe activity`
+for three read-only snapshots of the live collection path. The undocumented Desktop formats
+may change; an unknown status indicates missing evidence, not an idle guarantee.
+
 | Source | Path |
 |---|---|
 | Claude CLI live status | `~/.claude/sessions/<pid>.json` |
