@@ -47,6 +47,12 @@ public enum CodexSessionCollector {
 
     private static let scanLock = NSLock()
     nonisolated(unsafe) private static var scanCache: (at: Date, items: [(URL, Date)])?
+    private struct ProcessMetadata {
+        let cwd: String
+        let originator: String?
+        let source: String?
+    }
+    nonisolated(unsafe) private static var processMetadata: [String: ProcessMetadata] = [:]
     private static let rescan: TimeInterval = 15
     /// How far back the directory walk looks (same idea as ClaudeEndedCollector.scanWindow) —
     /// `recent` narrows from it, and search can span all of it. 90 days so deep search reaches
@@ -90,7 +96,10 @@ public enum CodexSessionCollector {
             }
         }
         found.sort { $0.1 > $1.1 }
-        scanLock.lock(); scanCache = (Date(), found); scanLock.unlock()
+        let paths = Set(found.map { $0.0.path })
+        scanLock.lock(); scanCache = (Date(), found)
+        processMetadata = processMetadata.filter { paths.contains($0.key) }
+        scanLock.unlock()
         return found
     }
 
@@ -102,9 +111,29 @@ public enum CodexSessionCollector {
         // from a *separate* index that can change without the rollout, so apply it OUTSIDE the cache
         // — otherwise a rename never shows until the rollout file happens to be rewritten.
         guard var s = cache.value(path: url.path, stamp: fileStamp(url),
-                                  compute: { parseUncached(url, mtime: mtime) }) else { return nil }
+                                  compute: { autoreleasepool { parseUncached(url, mtime: mtime) } }) else { return nil }
         s.title = titles[s.id]
         return s
+    }
+
+    /// Filter old rollout candidates using only their immutable first-line metadata. Parsing
+    /// rich prompt history for every unmatched TUI thrashes the bounded cache on large stores.
+    static func matchesProcess(_ url: URL, cwd: String, resumeId: String?) -> Bool {
+        if let resumeId { return url.lastPathComponent.contains(resumeId) }
+        scanLock.lock(); let cached = processMetadata[url.path]; scanLock.unlock()
+        let metadata = cached ?? autoreleasepool { () -> ProcessMetadata? in
+            guard let first = JSONLReader.firstObject(url, maxBytes: 64 * 1024),
+                  first["type"] as? String == "session_meta",
+                  let p = first["payload"] as? [String: Any], let cwd = p["cwd"] as? String else { return nil }
+            let value = ProcessMetadata(cwd: cwd, originator: p["originator"] as? String, source: p["thread_source"] as? String)
+            // session_meta is immutable; the directory rescan prunes obsolete index entries.
+            scanLock.lock(); processMetadata[url.path] = value; scanLock.unlock()
+            return value
+        }
+        guard let metadata else { return false }
+        return metadata.cwd == cwd && metadata.originator != "Codex Desktop"
+            && !SessionTree.claudeDriven.contains(metadata.originator ?? "")
+            && (metadata.source == nil || metadata.source == "user")
     }
 
     static func parseUncached(_ url: URL, mtime: Date) -> CodexSession? {

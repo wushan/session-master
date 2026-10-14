@@ -60,9 +60,9 @@ final class SessionStore {
         refreshing = true
         refreshStartedAt = Date()
         Task.detached(priority: .utility) {
-            let snap = SessionAggregator.snapshot()
-            let jobs = ScheduleAggregator.all()
-            let trusted = Recaller.accessibilityTrusted()
+            let (snap, jobs, trusted) = autoreleasepool {
+                (SessionAggregator.snapshot(), ScheduleAggregator.all(), Recaller.accessibilityTrusted())
+            }
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.sessions = snap.sessions

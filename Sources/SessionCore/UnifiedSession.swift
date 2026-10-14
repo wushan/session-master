@@ -237,7 +237,7 @@ public struct UnifiedSession: Identifiable, Sendable {
 /// Builds and enriches unified sessions from every collector.
 public enum SessionAggregator {
 
-    public static func all() -> [UnifiedSession] { snapshot().sessions }
+    public static func all() -> [UnifiedSession] { autoreleasepool { snapshot().sessions } }
 
     /// Top-level sessions plus a map of parent id → sub-agent children (Codex sub-agents).
     public static func snapshot() -> (sessions: [UnifiedSession], subagents: [String: [UnifiedSession]]) {
@@ -249,7 +249,11 @@ public enum SessionAggregator {
         let liveIds = jsonLiveIds.union(resumed.map(\.id))
         let desktop = desktopStandalone(excluding: liveIds)
         let codexAll = CodexSessionCollector.recent()
-        CodexRuntimeObserver.shared.observe(Set(codexAll.filter { $0.originator == "Codex Desktop" }.map(\.id)))
+        CodexRuntimeObserver.shared.observe(Set(codexAll.filter {
+            // Only an open lifecycle turn needs runtime wait flags. Unknown legacy files
+            // stay unknown without hydrating potentially huge old conversation snapshots.
+            $0.originator == "Codex Desktop" && $0.activity.status == .busy
+        }.map(\.id)))
         var codexRaw = filterCodex(codexAll)
         let (codexLive, codexExtra) = correlateCodexProcesses(rollouts: codexRaw)
         codexRaw += codexExtra   // open TUIs whose rollout aged out of the window
@@ -388,7 +392,8 @@ public enum SessionAggregator {
                 // are mtime-cached, so this costs one pass ever, not one per poll).
                 let titles = CodexSessionCollector.threadTitles()
                 for (url, m) in CodexSessionCollector.candidates() {
-                    guard let c = CodexSessionCollector.parse(url, mtime: m, titles: titles),
+                    guard CodexSessionCollector.matchesProcess(url, cwd: p.cwd, resumeId: p.resumeId),
+                          let c = CodexSessionCollector.parse(url, mtime: m, titles: titles),
                           out[c.id] == nil else { continue }
                     if let rid = p.resumeId { if c.id == rid { target = c; break } }
                     else if c.cwd == p.cwd, tuiEligible(c), bindable(c) { target = c; break }

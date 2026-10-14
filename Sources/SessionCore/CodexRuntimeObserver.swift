@@ -13,7 +13,7 @@ final class CodexRuntimeObserver: @unchecked Sendable {
     private var running = false
 
     func observe(_ ids: Set<String>) {
-        lock.lock(); desired = ids
+        lock.lock(); desired = ids; states = states.filter { ids.contains($0.key) }
         let start = !running && !ids.isEmpty
         if start { running = true }
         lock.unlock()
@@ -145,45 +145,51 @@ final class CodexRuntimeObserver: @unchecked Sendable {
                 if buffer.count < length + 4 { break }
                 let data = buffer.subdata(in: buffer.startIndex + 4..<buffer.startIndex + 4 + length)
                 buffer.removeFirst(length + 4)
-                guard let message = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
-                if message["method"] as? String == "initialize",
-                   let result = message["result"] as? [String: Any] { clientId = result["clientId"] as? String }
-                if message["type"] as? String == "client-discovery-request" {
-                    // Explicitly decline all command routing; we are only an observer.
-                    guard send(["type": "client-discovery-response", "requestId": message["requestId"] ?? "",
-                                "response": ["canHandle": false]], fd: fd) else { return }
-                }
-                if message["method"] as? String == "client-status-changed",
-                   let p = message["params"] as? [String: Any], p["status"] as? String == "disconnected",
-                   let owner = p["clientId"] as? String {
+                // This worker lives for the lifetime of the app. Drain temporary Foundation
+                // JSON objects per frame instead of retaining whole conversation snapshots.
+                let keepReading = autoreleasepool { () -> Bool in
+                    guard let message = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+                    if message["method"] as? String == "initialize",
+                       let result = message["result"] as? [String: Any] { clientId = result["clientId"] as? String }
+                    if message["type"] as? String == "client-discovery-request" {
+                        // Explicitly decline all command routing; we are only an observer.
+                        guard send(["type": "client-discovery-response", "requestId": message["requestId"] ?? "",
+                                    "response": ["canHandle": false]], fd: fd) else { return false }
+                    }
+                    if message["method"] as? String == "client-status-changed",
+                       let p = message["params"] as? [String: Any], p["status"] as? String == "disconnected",
+                       let owner = p["clientId"] as? String {
+                        lock.lock()
+                        for id in owners.keys.filter({ owners[$0] == owner }) {
+                            states.removeValue(forKey: id); owners.removeValue(forKey: id)
+                            revisions.removeValue(forKey: id); subscribed.remove(id)
+                        }
+                        lock.unlock()
+                    }
+                    guard message["method"] as? String == "thread-stream-state-changed",
+                          message["version"] as? Int == 11,
+                          let p = message["params"] as? [String: Any], p["hostId"] as? String == "local",
+                          let id = p["conversationId"] as? String, needed.contains(id),
+                          let change = p["change"] as? [String: Any] else { return true }
                     lock.lock()
-                    for id in owners.keys.filter({ owners[$0] == owner }) {
-                        states.removeValue(forKey: id); owners.removeValue(forKey: id)
-                        revisions.removeValue(forKey: id); subscribed.remove(id)
+                    if change["type"] as? String == "snapshot" {
+                        states[id] = (change["conversationState"] as? [String: Any])?["threadRuntimeStatus"] as? [String: Any]
+                        revisions[id] = change["revision"] as? Int
+                        owners[id] = message["sourceClientId"] as? String
+                    } else if let patches = change["patches"] as? [[String: Any]],
+                              let base = change["baseRevision"] as? Int, base == revisions[id],
+                              owners[id] == message["sourceClientId"] as? String {
+                        for patch in patches { Self.apply(patch, to: &states[id]) }
+                        revisions[id] = change["revision"] as? Int
+                    } else {
+                        // Never apply a patch onto the wrong snapshot after reconnect/owner changes.
+                        states.removeValue(forKey: id); revisions.removeValue(forKey: id)
+                        subscribed.remove(id)
                     }
                     lock.unlock()
+                    return true
                 }
-                guard message["method"] as? String == "thread-stream-state-changed",
-                      message["version"] as? Int == 11,
-                      let p = message["params"] as? [String: Any], p["hostId"] as? String == "local",
-                      let id = p["conversationId"] as? String, needed.contains(id),
-                      let change = p["change"] as? [String: Any] else { continue }
-                lock.lock()
-                if change["type"] as? String == "snapshot" {
-                    states[id] = (change["conversationState"] as? [String: Any])?["threadRuntimeStatus"] as? [String: Any]
-                    revisions[id] = change["revision"] as? Int
-                    owners[id] = message["sourceClientId"] as? String
-                } else if let patches = change["patches"] as? [[String: Any]],
-                          let base = change["baseRevision"] as? Int, base == revisions[id],
-                          owners[id] == message["sourceClientId"] as? String {
-                    for patch in patches { Self.apply(patch, to: &states[id]) }
-                    revisions[id] = change["revision"] as? Int
-                } else {
-                    // Never apply a patch onto the wrong snapshot after reconnect/owner changes.
-                    states.removeValue(forKey: id); revisions.removeValue(forKey: id)
-                    subscribed.remove(id)
-                }
-                lock.unlock()
+                if !keepReading { return }
             }
         }
     }

@@ -134,4 +134,31 @@ final class SessionActivityTests: XCTestCase {
         var a = SessionActivity(); a.consumeCodex(["type": "new_format"])
         XCTAssertEqual(a.status, .unknown)
     }
+
+    func testOldRolloutMatchingReadsMetadataAndDoesNotClaimDesktopWorkForTUI() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let id = UUID().uuidString
+        let url = dir.appendingPathComponent("rollout-\(id).jsonl")
+        func write(origin: String, source: String = "user") throws {
+            var data = try JSONSerialization.data(withJSONObject: ["type": "session_meta", "payload":
+                ["id": id, "cwd": "/target", "originator": origin, "thread_source": source]])
+            data.append(10); data.append(Data("history deliberately not parsed".utf8))
+            try data.write(to: url)
+        }
+        try write(origin: "Codex Desktop")
+        XCTAssertFalse(CodexSessionCollector.matchesProcess(url, cwd: "/target", resumeId: nil))
+        // Each rollout has immutable session_meta, just as the native tool writes it.
+        let tui = dir.appendingPathComponent("rollout-tui.jsonl")
+        try JSONSerialization.data(withJSONObject: ["type": "session_meta", "payload":
+            ["id": id, "cwd": "/target", "originator": "codex-tui", "thread_source": "user"]]).write(to: tui)
+        XCTAssertTrue(CodexSessionCollector.matchesProcess(tui, cwd: "/target", resumeId: nil))
+        XCTAssertFalse(CodexSessionCollector.matchesProcess(tui, cwd: "/other", resumeId: nil))
+        XCTAssertTrue(CodexSessionCollector.matchesProcess(url, cwd: "/other", resumeId: id))
+        let automation = dir.appendingPathComponent("automation.jsonl")
+        try JSONSerialization.data(withJSONObject: ["type": "session_meta", "payload":
+            ["id": id, "cwd": "/target", "originator": "codex-tui", "thread_source": "automation"]]).write(to: automation)
+        XCTAssertFalse(CodexSessionCollector.matchesProcess(automation, cwd: "/target", resumeId: nil))
+    }
 }

@@ -12,6 +12,8 @@ All notable changes to SessionMaster. Format based on [Keep a Changelog](https:/
 - Running sessions show a native spinner in menu, dashboard and child rows. Completed,
   interrupted, approval and input states have distinct accessible indicators; unavailable
   runtime evidence stays unknown.
+- Old-rollout process matching filters metadata before parsing prompt history, avoiding cache
+  churn on large session stores. The long-lived observer releases temporary JSON per frame.
 
 ## [0.6.0] — 2026-07-13
 
